@@ -460,4 +460,33 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+
+  /* RTL overrides */
+  :global([dir="rtl"]) .workflow-panel {
+    right: auto;
+    left: 1rem;
+  }
+  :global([dir="rtl"]) .step-item {
+    text-align: right;
+  }
+  :global([dir="rtl"]) .mcp-popup {
+    right: auto;
+    left: 1rem;
+  }
+  :global([dir="rtl"]) .mcp-server-item {
+    text-align: right;
+  }
+  :global([dir="rtl"]) .mcp-tool-list {
+    padding-left: 0;
+    padding-right: 1.7rem;
+  }
+  :global([dir="rtl"]) .mcp-tool-item {
+    text-align: right;
+  }
+  :global([dir="rtl"]) .mcp-chevron {
+    transform: rotate(180deg);
+  }
+  :global([dir="rtl"]) .mcp-chevron.expanded {
+    transform: rotate(90deg);
+  }
 </style>
