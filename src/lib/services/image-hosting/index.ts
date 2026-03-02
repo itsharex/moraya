@@ -6,6 +6,7 @@ import { providers } from './providers';
 
 /**
  * Upload an image blob to the configured image hosting provider.
+ * Retries once after 600ms on transient failures (e.g. tauriFetch cold-start).
  */
 export async function uploadImage(
   blob: Blob,
@@ -15,7 +16,12 @@ export async function uploadImage(
   if (!uploader) {
     throw new Error(`Unknown image hosting provider: ${config.provider}`);
   }
-  return uploader(blob, config);
+  try {
+    return await uploader(blob, config);
+  } catch (firstErr) {
+    await new Promise<void>(resolve => setTimeout(resolve, 600));
+    return uploader(blob, config);
+  }
 }
 
 /**

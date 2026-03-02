@@ -641,6 +641,19 @@ ${tr('welcome.tip')}
   function handleKeydown(event: KeyboardEvent) {
     const mod = event.metaKey || event.ctrlKey;
 
+    // Undo/Redo: on Tauri, native menu accelerators fire menu:edit_undo/redo (see handler above).
+    // On non-Tauri (browser), ProseMirror's built-in Mod-z keymap handles visual mode.
+    // This handler ensures undo/redo works in source mode in non-Tauri environments.
+    if (!isTauri && mod && event.key === 'z') {
+      event.preventDefault();
+      if (event.shiftKey) {
+        if (editorMode !== 'source') runCmd(redo); else document.execCommand('redo');
+      } else {
+        if (editorMode !== 'source') runCmd(undo); else document.execCommand('undo');
+      }
+      return;
+    }
+
     // File shortcuts
     if (mod && event.key === 's') {
       event.preventDefault();
@@ -1470,15 +1483,20 @@ ${tr('welcome.tip')}
         // Edit — undo/redo
         'menu:edit_undo': () => {
           if (editorMode === 'source') {
+            // Focus the active textarea so document.execCommand targets it
+            (document.activeElement as HTMLElement)?.focus();
             document.execCommand('undo');
           } else {
+            morayaEditor?.view.focus();
             runCmd(undo);
           }
         },
         'menu:edit_redo': () => {
           if (editorMode === 'source') {
+            (document.activeElement as HTMLElement)?.focus();
             document.execCommand('redo');
           } else {
+            morayaEditor?.view.focus();
             runCmd(redo);
           }
         },
@@ -1583,20 +1601,19 @@ ${tr('welcome.tip')}
         }
       });
 
-      // Drag-drop: open MD files (new windows on desktop, new tabs on iPad)
+      // Drag-drop: open MD files each in a new window
       const MD_EXTENSIONS = new Set(['md', 'markdown', 'mdown', 'mkd', 'mkdn', 'mdwn', 'mdx', 'txt']);
       if (!isIPadOS) {
         getCurrentWebview().onDragDropEvent(async (event) => {
           if (event.payload.type !== 'drop') return;
           const { paths } = event.payload;
-          for (const p of paths) {
-            const ext = p.split('.').pop()?.toLowerCase() ?? '';
-            if (MD_EXTENSIONS.has(ext)) {
-              try {
-                await invoke('open_file_in_new_window', { path: p });
-              } catch (err) {
-                console.error('Failed to open file in new window:', err);
-              }
+          const mdPaths = paths.filter(p => MD_EXTENSIONS.has(p.split('.').pop()?.toLowerCase() ?? ''));
+          if (mdPaths.length === 0) return;
+          for (const p of mdPaths) {
+            try {
+              await invoke('open_file_in_new_window', { path: p });
+            } catch (err) {
+              showToast(String(err instanceof Error ? err.message : err), 'error');
             }
           }
         }).then(unlisten => { dragDropUnlisten = unlisten; });

@@ -498,34 +498,55 @@ function buildSystemPrompt(
       '\nNever abandon the whole batch because one image failed — process each image independently.';
 
     // File writing rules
+    const openFileNote = currentFilePath && currentFilePath.endsWith('/MORAYA.md')
+      ? `\n\n**Currently open in editor**: ${currentFilePath} (the knowledge-base rules file)`
+      : currentFilePath
+        ? `\n\n**Currently open in editor**: ${currentFilePath}`
+        : '';
+
     prompt +=
-      '\n\nIMPORTANT — Rules for writing generated content:' +
+      '\n\nIMPORTANT — File write decision rules (read in order, use the FIRST matching rule):' +
       '\n' +
-      '\n**Single document** (generating one article, post, essay, etc.):' +
-      '\n  Use the `update_editor_content` tool. This fills content directly into the Moraya editor.' +
-      '\n  - If the editor has an open file, it saves to that file and refreshes the editor.' +
-      '\n  - If the editor has a new unsaved document, it fills the editor for the user to save.' +
+      '\n**Rule 1 — Explicit named target (HIGHEST PRIORITY)**' +
+      '\nIf the user says "modify [filename]", "update [path]", "edit the rules file", "write to MORAYA.md", etc.:' +
+      '\n  → Modify ONLY that specific file using `write_file` with its exact path.' +
+      '\n  → NEVER call `update_editor_content` — that tool writes to the CURRENTLY OPEN EDITOR FILE' +
+      (currentFilePath ? ` (which is: ${currentFilePath})` : ' (a new unsaved document)') +
+      ', NOT to the file you intend to modify.' +
+      '\n  → Skip the currently open document entirely; do not read it, do not write to it.' +
+      '\n  → EXCEPTION: if the target file IS already open in the editor (same path), use `update_editor_content`.' +
       '\n' +
-      '\n**Multiple documents** (batch generation, e.g. "generate 5 blog posts"):' +
-      '\n  Use `write_file` for each document. Choose the target directory in this priority order:' +
-      `\n  1. Current file's parent directory: ${currentDir || '(none — new unsaved document)'}` +
-      `\n  2. Sidebar open folder: ${sidebarDir || '(none — sidebar not open)'}` +
-      `\n  3. Fallback directory: ${fallbackDir || '(unknown)'}` +
-      '\n  Use the first available directory from the list above. Name files descriptively with .md extension.' +
-      '\n' +
-      '\nNever use `write_file` for single-document content that should go into the editor — always prefer `update_editor_content`.' +
+      '\n**Rule 2 — Explicit editor target**' +
+      '\nOnly if the user says "write to the editor", "put it in the current document", "add to this file", "update what I have open", etc.:' +
+      '\n  → Use `update_editor_content`.' +
       (currentFilePath && currentFilePath.endsWith('/MORAYA.md')
-        ? `\n\n**CRITICAL — MORAYA.md PROTECTION**: The file currently open in the editor is the knowledge base rules file: ${currentFilePath}\n` +
-          'This file contains AI rules/conventions and must NOT be overwritten with generated content.\n' +
-          '- Only use `update_editor_content` on this file when the user EXPLICITLY asks to modify, update, or edit the rules/conventions themselves.\n' +
-          '- For ALL content creation requests (articles, posts, essays, etc.), use `write_file` to create a NEW file instead. Never overwrite MORAYA.md with content.\n' +
-          '- If unsure whether the user wants to edit rules vs. create content, default to creating a new file with `write_file`.'
-        : currentFilePath
-          ? `\n\n**CRITICAL**: The file currently open in the editor is: ${currentFilePath}\n` +
-            'To modify this file, you MUST use `update_editor_content` (NOT `write_file` or `edit_file`). ' +
-            'Using `write_file` on the open file will cause a conflict error. ' +
-            'Read the current content from the document context above, make your changes, then pass the full updated content to `update_editor_content`.'
-          : '');
+        ? '\n  → EXCEPTION: since the open file is MORAYA.md (rules file), do NOT overwrite it with generated content. Create a new file with `write_file` instead.'
+        : '') +
+      '\n' +
+      '\n**Rule 3 — Ambiguous "create content" request (new article, post, essay, etc.)**' +
+      '\nIf the user asks to generate/write content WITHOUT specifying where it should go:' +
+      '\n  - If the editor has a NEW unsaved document → use `update_editor_content` (fill the blank editor).' +
+      '\n  - If the editor has an EXISTING saved file → use `write_file` to a new file. Do NOT overwrite the open document.' +
+      '\n' +
+      '\n**Rule 4 — Batch / multiple files**' +
+      '\nFor batch generation ("create 5 posts", "generate multiple files"):' +
+      '\n  → Use `write_file` for each. Target directory priority:' +
+      `\n     1. Current file's parent: ${currentDir || '(none)'}` +
+      `\n     2. Sidebar folder: ${sidebarDir || '(none)'}` +
+      `\n     3. Fallback: ${fallbackDir || '(unknown)'}` +
+      '\n' +
+      (!currentFilePath
+        ? '\n**Rule 5 — New unsaved document (ACTIVE NOW)**' +
+          '\nThe editor currently has a NEW unsaved document (no file path). ' +
+          'If Rule 1 does NOT apply (user did not name a specific target file), write content into the editor using `update_editor_content`. ' +
+          'This is the default destination when no explicit target is given and the document is new.'
+        : '\n**Rule 5 — New unsaved document**' +
+          '\nIf the editor has a new unsaved document AND no explicit target is named, write to the editor with `update_editor_content`. ' +
+          `(Not active now — editor has an existing file: ${currentFilePath})`) +
+      openFileNote +
+      (currentFilePath && !currentFilePath.endsWith('/MORAYA.md')
+        ? `\n\n**Using update_editor_content on the open file**: Only allowed when user explicitly asks to modify the currently open document (${currentFilePath}). When that is the case, read current content from document context, apply changes, then pass full updated content.`
+        : '');
 
     // Remind about MORAYA.md rules if they exist
     if (rulesResult?.active) {
@@ -702,7 +723,7 @@ export async function sendChatMessage(message: string, documentContext?: string,
 
       // Use increased max_tokens after truncation to give more room for tool calls
       const effectiveConfig = truncationRetries > 0
-        ? { ...activeConfig, maxTokens: Math.max((activeConfig.maxTokens || 81920) * 2, 163840) }
+        ? { ...activeConfig, maxTokens: Math.max((activeConfig.maxTokens || 41920) * 2, 83840) }
         : activeConfig;
 
       // Yield to event loop before each API call so user interactions (stop, ESC,
@@ -1147,7 +1168,10 @@ export async function testAIConnection(config?: AIProviderConfig): Promise<{ suc
   if (!testConfig) return { success: false, error: 'No configuration' };
 
   try {
-    const response = await sendAIRequest(testConfig, {
+    // Cap max_tokens for the connection test — many providers reject very large
+    // values (e.g. Dashscope returns 400 for max_tokens > model limit).
+    // The test only needs a short reply.
+    const response = await sendAIRequest({ ...testConfig, maxTokens: Math.min(testConfig.maxTokens || 1024, 1024) }, {
       messages: [
         { role: 'user', content: 'Say "Hello from Moraya!" in exactly 3 words.', timestamp: Date.now() },
       ],
@@ -1182,6 +1206,10 @@ export function generateBaseUrlCandidates(baseUrl?: string): string[] {
 /**
  * Test AI connection with auto-resolution: progressively strip the base URL path
  * until a working endpoint is found. Returns the resolved URL on success.
+ *
+ * Only continues to the next candidate on 404 (path not found) or network
+ * errors. On 400/401/403/429/5xx the endpoint was reached — stop immediately
+ * so the real error is reported rather than a misleading 404 from a stripped URL.
  */
 export async function testAIConnectionWithResolve(
   config: AIProviderConfig,
@@ -1192,6 +1220,11 @@ export async function testAIConnectionWithResolve(
     const result = await testAIConnection({ ...config, baseUrl: url || undefined });
     if (result.success) return { success: true, resolvedBaseUrl: url };
     lastError = result.error;
+    // A non-404 "API error" means the endpoint was reached but the request
+    // itself was rejected (e.g. 400 invalid body, 401 bad key, 429 rate limit).
+    // Stop retrying — further URL stripping won't help and may surface a
+    // misleading 404 from a non-existent stripped path.
+    if (typeof lastError === 'string' && lastError.startsWith('API error (') && !lastError.includes('API error (404)')) break;
   }
   return { success: false, error: lastError };
 }

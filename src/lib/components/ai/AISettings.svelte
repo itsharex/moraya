@@ -32,7 +32,7 @@
   let formApiKey = $state('');
   let formBaseUrl = $state('');
   let formModel = $state('');
-  let formMaxTokens = $state(81920);
+  let formMaxTokens = $state(41920);
   let formTemperature = $state(0.7);
   let formTestStatus = $state<'idle' | 'testing' | 'success' | 'failed'>('idle');
   let formTestError = $state('');
@@ -118,7 +118,7 @@
     formApiKey = config.apiKey;
     formBaseUrl = config.baseUrl || '';
     formModel = config.model;
-    formMaxTokens = config.maxTokens || 81920;
+    formMaxTokens = config.maxTokens || 41920;
     formTemperature = config.temperature || 0.7;
     formTestStatus = 'idle';
   }
@@ -130,7 +130,7 @@
     formApiKey = '';
     formBaseUrl = '';
     formModel = DEFAULT_MODELS.claude[0] || '';
-    formMaxTokens = 81920;
+    formMaxTokens = 41920;
     formTemperature = 0.7;
     formTestStatus = 'idle';
   }
@@ -402,7 +402,7 @@
         <div class="config-info">
           <span class="config-provider">{$t(`ai.providers.${config.provider}`)}</span>
           <span class="config-model">{config.model}</span>
-          <span class="config-tokens">{config.maxTokens || 81920}</span>
+          <span class="config-tokens">{config.maxTokens || 41920}</span>
           {#if config.id === activeChatConfigId}
             <span class="default-badge">{$t('ai.multiModel.default')}</span>
           {/if}

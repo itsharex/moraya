@@ -180,7 +180,7 @@ async function callClaude(config: AIProviderConfig, request: AIRequest, signal?:
 
   const body: Record<string, unknown> = {
     model: config.model,
-    max_tokens: config.maxTokens || 81920,
+    max_tokens: config.maxTokens || 41920,
     messages: buildClaudeMessages(chatMessages),
   };
 
@@ -270,7 +270,7 @@ async function* streamClaude(config: AIProviderConfig, request: AIRequest, signa
 
   const body: Record<string, unknown> = {
     model: config.model,
-    max_tokens: config.maxTokens || 81920,
+    max_tokens: config.maxTokens || 41920,
     stream: true,
     messages: buildClaudeMessages(chatMessages),
   };
@@ -293,7 +293,7 @@ async function callOpenAICompatible(config: AIProviderConfig, request: AIRequest
 
   const body: Record<string, unknown> = {
     model: config.model,
-    max_tokens: config.maxTokens || 81920,
+    max_tokens: config.maxTokens || 41920,
     temperature: config.temperature ?? 0.7,
     messages: buildOpenAIMessages(request.messages),
   };
@@ -359,7 +359,7 @@ async function* streamOpenAICompatible(config: AIProviderConfig, request: AIRequ
 
   const body: Record<string, unknown> = {
     model: config.model,
-    max_tokens: config.maxTokens || 81920,
+    max_tokens: config.maxTokens || 41920,
     temperature: config.temperature ?? 0.7,
     stream: true,
     messages: buildOpenAIMessages(request.messages),
@@ -384,7 +384,7 @@ async function callGemini(config: AIProviderConfig, request: AIRequest, signal?:
   const body: Record<string, unknown> = {
     contents,
     generationConfig: {
-      maxOutputTokens: config.maxTokens || 81920,
+      maxOutputTokens: config.maxTokens || 41920,
       temperature: config.temperature ?? 0.7,
     },
   };
@@ -487,7 +487,7 @@ async function callOllama(config: AIProviderConfig, request: AIRequest, signal?:
     stream: false,
     options: {
       temperature: config.temperature ?? 0.7,
-      num_predict: config.maxTokens || 81920,
+      num_predict: config.maxTokens || 41920,
     },
   };
 

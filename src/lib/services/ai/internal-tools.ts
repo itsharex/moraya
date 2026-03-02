@@ -164,10 +164,13 @@ export const INTERNAL_TOOLS: ToolDefinition[] = [
   {
     name: 'update_editor_content',
     description:
-      'Write Markdown content directly into the Moraya editor. Use this tool (instead of write_file) ' +
-      'when you need to fill or replace the current document with generated content. ' +
-      'If the editor has an open file, it writes to that file and refreshes the editor. ' +
-      'If the editor has a new unsaved document, it fills the content directly into the editor.',
+      'Write Markdown content into the Moraya editor\'s CURRENTLY OPEN document. ' +
+      'IMPORTANT: This tool always writes to whatever file is open in the editor right now — ' +
+      'it has NO ability to choose a target path. ' +
+      'Do NOT use this tool when the user asks to modify a specific named file (e.g. MORAYA.md, rules.md, or any path) ' +
+      'unless that exact file is already open in the editor. ' +
+      'For writing to a specific file by path, use write_file instead. ' +
+      'Correct uses: (1) filling a new unsaved document, (2) replacing the content of the file the user is currently editing.',
     input_schema: {
       type: 'object',
       properties: {
