@@ -1281,6 +1281,7 @@
   },
   "plugins": {
     "tabs": {
+      "preset": "مدمج",
       "installed": "المُثبَّتة",
       "market": "السوق"
     },
@@ -1327,6 +1328,18 @@
     "processError": "تعطلت عملية الإضافة. قم بالتبديل لإعادة التشغيل.",
     "error": {
       "platformNotSupported": "لا يتوفر تنزيل لنظامك."
+    },
+    "preset": {
+      "initializing": "جارٍ التحميل...",
+      "download": "تنزيل",
+      "retry": "إعادة المحاولة",
+      "ready": "مُفعَّل",
+      "downloading": "جارٍ التنزيل...",
+      "loading": "جارٍ التحميل...",
+      "error": "خطأ",
+      "largeBundle": "حزمة كبيرة (>500 كيلوبايت) — قد يستغرق التنزيل بعض الوقت",
+      "cancel": "إلغاء",
+      "delete": "حذف"
     }
   },
   "transcription": {

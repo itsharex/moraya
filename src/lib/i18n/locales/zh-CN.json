@@ -1281,8 +1281,21 @@
   },
   "plugins": {
     "tabs": {
+      "preset": "内置插件",
       "installed": "已安装",
       "market": "插件市场"
+    },
+    "preset": {
+      "initializing": "加载中...",
+      "download": "下载",
+      "retry": "重试",
+      "ready": "已启用",
+      "downloading": "下载中...",
+      "loading": "加载中...",
+      "error": "错误",
+      "largeBundle": "大型包（>500 KB），下载可能需要一些时间",
+      "cancel": "取消",
+      "delete": "删除"
     },
     "installed": {
       "empty": "尚未安装任何插件。"

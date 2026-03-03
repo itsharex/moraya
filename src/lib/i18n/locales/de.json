@@ -873,7 +873,7 @@
     "listItem3c": "Tastenkombinationen",
     "paragraphTitle": "Über Moraya",
     "paragraph1": "Moraya ist ein moderner, leichtgewichtiger Markdown-Editor, der mit Rust und Tauri entwickelt wurde. Er kombiniert die Einfachheit eines Texteditors mit der Leistungsfähigkeit einer WYSIWYG-Oberfläche und bietet Ihnen das Beste aus beiden Welten.",
-    "paragraph2": "Der Name \u201EMoraya\u201C entsteht aus der Kombination von \u201Emora\u201C (lateinisch f\u00FCr \u201Eein Moment\u201C) und \u201Eya\u201C (chinesisch f\u00FCr \u201EEleganz\u201C) und symbolisiert elegante Momente des Schreibens.",
+    "paragraph2": "Der Name „Moraya“ entsteht aus der Kombination von „mora“ (lateinisch für „ein Moment“) und „ya“ (chinesisch für „Eleganz“) und symbolisiert elegante Momente des Schreibens.",
     "paragraph3": "Ob Sie technische Dokumentation, Blogbeiträge, wissenschaftliche Arbeiten oder persönliche Notizen schreiben — Moraya bietet eine ablenkungsfreie Umgebung, die Sie sich auf das Wesentliche konzentrieren lässt — Ihren Inhalt.",
     "hrTitle": "Horizontale Linien",
     "hrDescription": "Sie können horizontale Linien verwenden, um verschiedene Abschnitte Ihres Dokuments zu trennen:"
@@ -1281,6 +1281,7 @@
   },
   "plugins": {
     "tabs": {
+      "preset": "Integriert",
       "installed": "Installiert",
       "market": "Marktplatz"
     },
@@ -1327,6 +1328,18 @@
     "processError": "Plugin-Prozess abgestürzt. Umschalten zum Neustart.",
     "error": {
       "platformNotSupported": "Kein Download für Ihre Plattform verfügbar."
+    },
+    "preset": {
+      "initializing": "Wird geladen...",
+      "download": "Herunterladen",
+      "retry": "Wiederholen",
+      "ready": "Aktiviert",
+      "downloading": "Wird heruntergeladen...",
+      "loading": "Wird geladen...",
+      "error": "Fehler",
+      "largeBundle": "Großes Paket (>500 KB) – der Download kann einen Moment dauern",
+      "cancel": "Abbrechen",
+      "delete": "Löschen"
     }
   },
   "transcription": {

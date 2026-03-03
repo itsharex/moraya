@@ -310,10 +310,10 @@
             <div class="section-header">{$t('knowledgeBase.title')}</div>
             <div class="setting-group">
               <div class="kb-setting-row">
-                <span class="kb-count">{knowledgeBases.length} {$t('knowledgeBase.title').toLowerCase()}</span>
                 <button class="kb-manage-btn" onclick={() => showKBManager = true}>
                   {$t('knowledgeBase.manage')}
                 </button>
+                <span class="kb-count">{knowledgeBases.length} {$t('knowledgeBase.title').toLowerCase()}</span>
               </div>
             </div>
           </div>

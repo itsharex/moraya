@@ -1281,6 +1281,7 @@
   },
   "plugins": {
     "tabs": {
+      "preset": "Integradas",
       "installed": "Instalados",
       "market": "Marketplace"
     },
@@ -1327,6 +1328,18 @@
     "processError": "O processo do plugin travou. Alterne para reiniciar.",
     "error": {
       "platformNotSupported": "Nenhum download disponível para sua plataforma."
+    },
+    "preset": {
+      "initializing": "Carregando...",
+      "download": "Baixar",
+      "retry": "Tentar novamente",
+      "ready": "Ativado",
+      "downloading": "Baixando...",
+      "loading": "Carregando...",
+      "error": "Erro",
+      "largeBundle": "Pacote grande (>500 KB) — o download pode demorar um momento",
+      "cancel": "Cancelar",
+      "delete": "Excluir"
     }
   },
   "transcription": {

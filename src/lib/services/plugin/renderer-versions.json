@@ -1,1 +1,12 @@
-{}
+{
+  "wavedrom": "3.5.0",
+  "nomnoml": "1.7.0",
+  "echarts": "6.0.0",
+  "vega-embed": "7.1.0",
+  "abcjs": "6.6.2",
+  "jsmind": "0.9.1",
+  "@pintora/standalone": "0.8.1",
+  "chart.js": "4.5.1",
+  "cytoscape": "3.33.1",
+  "@viz-js/viz": "3.24.0"
+}

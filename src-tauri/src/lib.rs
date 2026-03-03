@@ -354,6 +354,8 @@ pub fn run() {
             commands::plugin_manager::plugin_invoke,
             commands::plugin_manager::plugin_registry_fetch,
             commands::plugin_manager::plugin_fetch_blacklist,
+            commands::plugin_manager::download_renderer_plugin,
+            commands::plugin_manager::delete_renderer_plugin,
             set_editor_mode_menu,
             update_menu_labels,
             set_menu_check,

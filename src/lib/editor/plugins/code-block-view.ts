@@ -9,6 +9,18 @@
 import type { Node as PmNode } from 'prosemirror-model';
 import type { EditorView } from 'prosemirror-view';
 import type { renderMermaid as RenderFn, updateMermaidTheme as UpdateThemeFn } from './mermaid-renderer';
+import { RENDERER_PLUGINS } from '$lib/services/plugin/renderer-registry';
+import { loadRendererPlugin } from '$lib/services/plugin/renderer-loader';
+import rendererVersions from '$lib/services/plugin/renderer-versions.json';
+
+function getRendererCdnUrl(npmPackage: string, cdnUrl: string): string {
+  const ver = (rendererVersions as Record<string, string>)[npmPackage] ?? 'latest';
+  return cdnUrl.replace('{version}', ver);
+}
+
+function findRendererPlugin(lang: string) {
+  return RENDERER_PLUGINS.find((p) => p.languages.includes(lang));
+}
 
 // ── Mermaid lazy-load wrapper ─────────────────────
 
@@ -77,13 +89,25 @@ const POPULAR_LANGUAGES: LanguageEntry[] = [
   { id: 'system', label: 'System Prompt', aliases: ['system-prompt'] },
 ];
 
+// Renderer plugin languages — shown in a separate "Renderer Plugins" group
+const RENDERER_PLUGIN_LANGUAGES: LanguageEntry[] = RENDERER_PLUGINS.flatMap((p) =>
+  p.languages.map((lang, i) => ({
+    id: lang,
+    label: i === 0 ? p.name : `${p.name} (${lang})`,
+    aliases: i === 0 ? p.languages.slice(1) : [],
+  }))
+);
+
 const ALL_LANGUAGES: LanguageEntry[] = [
   ...POPULAR_LANGUAGES,
   { id: 'scss', label: 'SCSS', aliases: [] },
   { id: 'lua', label: 'Lua', aliases: [] },
   { id: 'diff', label: 'Diff', aliases: [] },
   { id: 'mermaid', label: 'Mermaid', aliases: [] },
+  ...RENDERER_PLUGIN_LANGUAGES,
 ].sort((a, b) => a.label.localeCompare(b.label));
+
+const RENDERER_LANG_IDS = new Set(RENDERER_PLUGINS.flatMap((p) => p.languages));
 
 const POPULAR_IDS = new Set(POPULAR_LANGUAGES.map(l => l.id));
 
@@ -197,9 +221,10 @@ function createLanguagePicker(
         listEl.appendChild(createOption(lang));
       }
 
-      // Divider + All (excluding popular)
+      // Divider + All (excluding popular and renderer plugins)
+      const rendererIds = new Set(RENDERER_PLUGIN_LANGUAGES.map(l => l.id));
       const others = ALL_LANGUAGES.filter(
-        l => !POPULAR_IDS.has(l.id) && matchesFilter(l),
+        l => !POPULAR_IDS.has(l.id) && !rendererIds.has(l.id) && matchesFilter(l),
       );
       if (others.length > 0) {
         const divider = document.createElement('div');
@@ -211,6 +236,22 @@ function createLanguagePicker(
         allLabel.textContent = 'All';
         listEl.appendChild(allLabel);
         for (const lang of others) {
+          listEl.appendChild(createOption(lang));
+        }
+      }
+
+      // Renderer plugins group
+      const rendererMatches = RENDERER_PLUGIN_LANGUAGES.filter(matchesFilter);
+      if (rendererMatches.length > 0) {
+        const divider2 = document.createElement('div');
+        divider2.className = 'code-lang-divider';
+        listEl.appendChild(divider2);
+
+        const rendererLabel = document.createElement('div');
+        rendererLabel.className = 'code-lang-group-label';
+        rendererLabel.textContent = 'Renderer Plugins';
+        listEl.appendChild(rendererLabel);
+        for (const lang of rendererMatches) {
           listEl.appendChild(createOption(lang));
         }
       }
@@ -396,9 +437,16 @@ export function createCodeBlockNodeView(node: PmNode, view: EditorView, getPos: 
     mermaidPreview.setAttribute('contenteditable', 'false');
     mermaidPreview.style.display = 'none';
 
+    // Renderer plugin preview container
+    const rendererPreview = document.createElement('div');
+    rendererPreview.className = 'renderer-preview';
+    rendererPreview.setAttribute('contenteditable', 'false');
+    rendererPreview.style.display = 'none';
+
     wrapper.appendChild(toolbar);
     wrapper.appendChild(pre);
     wrapper.appendChild(mermaidPreview);
+    wrapper.appendChild(rendererPreview);
 
     // ── Mermaid state ──
     let isEditing = false;
@@ -406,15 +454,23 @@ export function createCodeBlockNodeView(node: PmNode, view: EditorView, getPos: 
     let lastRenderedCode = '';
     let renderTimer: ReturnType<typeof setTimeout> | null = null;
 
+    // ── Renderer plugin state ──
+    let isRenderer = RENDERER_LANG_IDS.has(node.attrs.language || '');
+    let rendererEditing = false;
+    let lastRendererCode = '';
+    let rendererTimer: ReturnType<typeof setTimeout> | null = null;
+
     function syncMermaidMode() {
       const showPreview = isMermaid && !isEditing;
-      pre.style.display = showPreview ? 'none' : '';
+      pre.style.display = (showPreview || (isRenderer && !rendererEditing)) ? 'none' : '';
       mermaidPreview.style.display = showPreview ? 'flex' : 'none';
       // CSS default is display:none; must set inline to override
-      toggleBtn.style.display = isMermaid ? 'inline-flex' : 'none';
+      toggleBtn.style.display = (isMermaid || isRenderer) ? 'inline-flex' : 'none';
       wrapper.classList.toggle('mermaid-preview-mode', showPreview);
-      toggleBtn.textContent = isEditing ? '👁 Preview' : '✏️ Edit';
-      if (showPreview) triggerMermaidRender();
+      if (isMermaid) {
+        toggleBtn.textContent = isEditing ? '👁 Preview' : '✏️ Edit';
+        if (showPreview) triggerMermaidRender();
+      }
     }
 
     function triggerMermaidRender() {
@@ -448,6 +504,53 @@ export function createCodeBlockNodeView(node: PmNode, view: EditorView, getPos: 
       }, 150);
     }
 
+    // ── Renderer plugin sync ──────────────────────────
+
+    function syncRendererMode() {
+      const showPreview = isRenderer && !rendererEditing;
+      pre.style.display = (showPreview || (isMermaid && !isEditing)) ? 'none' : '';
+      rendererPreview.style.display = showPreview ? 'block' : 'none';
+      toggleBtn.style.display = (isMermaid || isRenderer) ? 'inline-flex' : 'none';
+      if (isRenderer) {
+        toggleBtn.textContent = rendererEditing ? '👁 Preview' : '✏️ Edit';
+        if (showPreview) triggerRendererRender();
+      }
+    }
+
+    function triggerRendererRender() {
+      const source = code.textContent || '';
+      const lang = node.attrs.language || '';
+      const plugin = findRendererPlugin(lang);
+      if (!plugin) return;
+
+      if (!source.trim()) {
+        rendererPreview.innerHTML = '<div class="renderer-empty">Empty block</div>';
+        lastRendererCode = '';
+        return;
+      }
+      if (source === lastRendererCode) return;
+      lastRendererCode = source;
+
+      if (rendererTimer) clearTimeout(rendererTimer);
+      rendererTimer = setTimeout(async () => {
+        rendererPreview.innerHTML = '<div class="renderer-loading"><div class="renderer-spinner"></div>Rendering...</div>';
+        const cdnUrl = getRendererCdnUrl(plugin.npmPackage, plugin.cdnUrl);
+        const result = await loadRendererPlugin(plugin, cdnUrl);
+        // Guard: source may have changed during async load
+        if (code.textContent !== source) return;
+        if (result.status === 'ready' && result.module) {
+          rendererPreview.innerHTML = '';
+          try {
+            await plugin.render(rendererPreview, source, result.module);
+          } catch (e) {
+            rendererPreview.innerHTML = `<div class="renderer-error">${escapeText(String(e))}</div>`;
+          }
+        } else {
+          rendererPreview.innerHTML = `<div class="renderer-error">${escapeText(result.error ?? 'Load failed')}</div>`;
+        }
+      }, 150);
+    }
+
     // Theme change: re-render this block
     function onThemeChange() {
       if (isMermaid && !isEditing) {
@@ -456,12 +559,27 @@ export function createCodeBlockNodeView(node: PmNode, view: EditorView, getPos: 
       }
     }
 
+    // Re-render when a renderer plugin finishes downloading for the first time.
+    // Without this, NodeViews created before a plugin was enabled would never
+    // re-trigger because lastRendererCode is already set to the current source.
+    function onPluginReady(event: Event) {
+      const { pluginId } = (event as CustomEvent<{ pluginId: string }>).detail;
+      const plugin = findRendererPlugin(node.attrs.language || '');
+      if (plugin && plugin.id === pluginId && isRenderer && !rendererEditing) {
+        lastRendererCode = ''; // force re-render
+        triggerRendererRender();
+      }
+    }
+    window.addEventListener('renderer-plugin-ready', onPluginReady);
+
     if (isMermaid) {
       installThemeObserver();
       mermaidReRenderCallbacks.add(onThemeChange);
       // Defer: ProseMirror populates contentDOM AFTER NodeView factory returns,
       // so code.textContent is empty here. Wait one frame for content to arrive.
       requestAnimationFrame(() => syncMermaidMode());
+    } else if (isRenderer) {
+      requestAnimationFrame(() => syncRendererMode());
     } else {
       syncMermaidMode();
     }
@@ -505,13 +623,18 @@ export function createCodeBlockNodeView(node: PmNode, view: EditorView, getPos: 
       });
     });
 
-    // ── Mermaid toggle button ──
+    // ── Mermaid / Renderer toggle button ──
     toggleBtn.addEventListener('mousedown', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      isEditing = !isEditing;
-      syncMermaidMode();
-      if (isEditing) view.focus();
+      if (isMermaid) {
+        isEditing = !isEditing;
+        syncMermaidMode();
+      } else if (isRenderer) {
+        rendererEditing = !rendererEditing;
+        syncRendererMode();
+      }
+      if (isEditing || rendererEditing) view.focus();
     });
 
     // Click SVG preview → enter edit mode
@@ -564,7 +687,22 @@ export function createCodeBlockNodeView(node: PmNode, view: EditorView, getPos: 
             mermaidReRenderCallbacks.delete(onThemeChange);
           }
         }
-        syncMermaidMode();
+
+        // Renderer plugin detection & mode sync
+        const wasRenderer = isRenderer;
+        isRenderer = RENDERER_LANG_IDS.has(updatedNode.attrs.language || '');
+        if (isRenderer !== wasRenderer) {
+          rendererEditing = false;
+          lastRendererCode = '';
+          rendererPreview.innerHTML = '';
+        }
+
+        if (isRenderer) {
+          syncRendererMode();
+        } else {
+          rendererPreview.style.display = 'none';
+          syncMermaidMode();
+        }
         return true;
       },
 
@@ -582,7 +720,9 @@ export function createCodeBlockNodeView(node: PmNode, view: EditorView, getPos: 
           activePicker = null;
         }
         if (renderTimer) clearTimeout(renderTimer);
+        if (rendererTimer) clearTimeout(rendererTimer);
         mermaidReRenderCallbacks.delete(onThemeChange);
+        window.removeEventListener('renderer-plugin-ready', onPluginReady);
       },
     };
 }

@@ -1281,6 +1281,7 @@
   },
   "plugins": {
     "tabs": {
+      "preset": "내장",
       "installed": "설치됨",
       "market": "마켓플레이스"
     },
@@ -1327,6 +1328,18 @@
     "processError": "플러그인 프로세스가 충돌했습니다. 토글하여 재시작하세요.",
     "error": {
       "platformNotSupported": "사용 중인 플랫폼에 다운로드가 없습니다."
+    },
+    "preset": {
+      "initializing": "로드 중...",
+      "download": "다운로드",
+      "retry": "재시도",
+      "ready": "활성화됨",
+      "downloading": "다운로드 중...",
+      "loading": "로드 중...",
+      "error": "오류",
+      "largeBundle": "큰 번들 (>500 KB) — 다운로드하는 데 잠시 시간이 걸릴 수 있습니다",
+      "cancel": "취소",
+      "delete": "삭제"
     }
   },
   "transcription": {

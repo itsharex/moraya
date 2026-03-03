@@ -1277,6 +1277,7 @@
   },
   "plugins": {
     "tabs": {
+      "preset": "Intégrés",
       "installed": "Installés",
       "market": "Marketplace"
     },
@@ -1323,6 +1324,18 @@
     "processError": "Le processus du plugin a planté. Basculez pour redémarrer.",
     "error": {
       "platformNotSupported": "Aucun téléchargement disponible pour votre plateforme."
+    },
+    "preset": {
+      "initializing": "Chargement...",
+      "download": "Télécharger",
+      "retry": "Réessayer",
+      "ready": "Activé",
+      "downloading": "Téléchargement...",
+      "loading": "Chargement...",
+      "error": "Erreur",
+      "largeBundle": "Gros paquet (>500 Ko) — le téléchargement peut prendre un moment",
+      "cancel": "Annuler",
+      "delete": "Supprimer"
     }
   },
   "transcription": {

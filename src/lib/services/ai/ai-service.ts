@@ -27,6 +27,7 @@ import { containerStore } from '$lib/services/mcp/container-store';
 import { refreshFileTree } from '$lib/services/file-watcher';
 import { documentDir } from '@tauri-apps/api/path';
 import { invoke } from '@tauri-apps/api/core';
+import { rendererManager } from '$lib/services/plugin/renderer-manager';
 
 const AI_STORE_FILE = 'ai-config.json';
 const KEYCHAIN_AI_PREFIX = 'ai-key:';
@@ -567,6 +568,18 @@ function buildSystemPrompt(
       '\n- Pass API keys as env variables, never hardcode them in handler code' +
       '\n- Keep handlers focused and include proper error handling' +
       '\n- The service tools become immediately available for subsequent tool calls';
+  }
+
+  // Renderer plugin AI hints — inject only for enabled+ready plugins
+  const enabledRendererPlugins = rendererManager.getEnabled();
+  if (enabledRendererPlugins.length > 0) {
+    const pluginLines = enabledRendererPlugins
+      .map(p => `- \`${p.languages[0]}\` — ${p.aiHint}`)
+      .join('\n');
+    prompt +=
+      '\n\n## Active Renderer Plugins\n' +
+      'The following code block types are rendered visually in the editor. Use them when generating visual content:\n' +
+      pluginLines;
   }
 
   if (currentDir) prompt += `\n\nCurrent working directory: ${currentDir}`;

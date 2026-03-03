@@ -1281,6 +1281,7 @@
   },
   "plugins": {
     "tabs": {
+      "preset": "內建插件",
       "installed": "已安裝",
       "market": "外掛市集"
     },
@@ -1327,6 +1328,18 @@
     "processError": "外掛處理程序已當機，請切換開關重新啟動。",
     "error": {
       "platformNotSupported": "目前平台暫無可用安裝套件。"
+    },
+    "preset": {
+      "initializing": "載入中...",
+      "download": "下載",
+      "retry": "重試",
+      "ready": "已啟用",
+      "downloading": "下載中...",
+      "loading": "載入中...",
+      "error": "錯誤",
+      "largeBundle": "大型套件（>500 KB），下載可能需要一些時間",
+      "cancel": "取消",
+      "delete": "刪除"
     }
   },
   "transcription": {

@@ -372,6 +372,61 @@
   font-style: italic;
 }
 
+/* ── Renderer plugin preview container ──────────────────────────────────── */
+
+.moraya-editor .renderer-preview {
+  padding: 1rem;
+  overflow: auto;
+  background: var(--bg-primary);
+  border-top: 1px solid var(--border-light);
+}
+
+.moraya-editor .renderer-preview svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Renderer loading state */
+.moraya-editor .renderer-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  padding: 0.5rem 0;
+}
+
+.moraya-editor .renderer-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border-light);
+  border-top-color: var(--accent-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+/* Renderer error state */
+.moraya-editor .renderer-error {
+  color: #d32f2f;
+  font-size: var(--font-size-xs);
+  background: rgba(211, 47, 47, 0.06);
+  border-radius: 4px;
+  padding: 0.5rem 0.75rem;
+}
+
+[data-theme="dark"] .moraya-editor .renderer-error {
+  color: #ef5350;
+  background: rgba(239, 83, 80, 0.1);
+}
+
+/* Renderer empty state */
+.moraya-editor .renderer-empty {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  font-style: italic;
+}
+
 /* Fallback: bare <pre> without NodeView (e.g. during initialization) */
 .moraya-editor pre:not(.code-block-pre) {
   font-family: var(--font-mono);

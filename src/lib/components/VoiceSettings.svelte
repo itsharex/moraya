@@ -468,15 +468,17 @@
         {/if}
         <div class="field">
           <label>{$t('settings.voice.model')}</label>
-          {#if availableModels.length > 0}
-            <select bind:value={form.model}>
-              {#each availableModels as m}
-                <option value={m}>{m}</option>
-              {/each}
-            </select>
-          {:else}
-            <input type="text" bind:value={form.model} placeholder={$t('settings.voice.modelPlaceholder')} />
-          {/if}
+          <input
+            list="voice-model-list-add-{form.provider}"
+            type="text"
+            bind:value={form.model}
+            placeholder={$t('settings.voice.modelPlaceholder')}
+          />
+          <datalist id="voice-model-list-add-{form.provider}">
+            {#each availableModels as m}
+              <option value={m} />
+            {/each}
+          </datalist>
         </div>
         <div class="field">
           <label>{$t('settings.voice.language')}</label>

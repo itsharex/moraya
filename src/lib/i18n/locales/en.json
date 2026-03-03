@@ -1281,8 +1281,21 @@
   },
   "plugins": {
     "tabs": {
+      "preset": "Built-in",
       "installed": "Installed",
       "market": "Marketplace"
+    },
+    "preset": {
+      "initializing": "Loading...",
+      "download": "Download",
+      "retry": "Retry",
+      "ready": "Enabled",
+      "downloading": "Downloading...",
+      "loading": "Loading...",
+      "error": "Error",
+      "largeBundle": "Large bundle (>500 KB) — download may take a moment",
+      "cancel": "Cancel",
+      "delete": "Delete"
     },
     "installed": {
       "empty": "No plugins installed yet."

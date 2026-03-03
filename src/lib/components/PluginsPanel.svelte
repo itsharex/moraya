@@ -1,12 +1,17 @@
 <script lang="ts">
-  import { onDestroy } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
   import { t } from '$lib/i18n';
+  import { openUrl } from '@tauri-apps/plugin-opener';
   import { pluginStore } from '$lib/services/plugin';
+  import { rendererManager } from '$lib/services/plugin/renderer-manager';
+  import { RENDERER_PLUGINS } from '$lib/services/plugin/renderer-registry';
+  import rendererVersions from '$lib/services/plugin/renderer-versions.json';
   import type { PluginMarketData, InstalledPlugin, PluginStateEntry, PluginSandboxLevel } from '$lib/services/plugin';
+  import type { RendererPluginState } from '$lib/services/plugin/renderer-manager';
 
-  type PanelView = 'installed' | 'market';
+  type ActiveTab = 'preset' | 'installed' | 'market';
 
-  let view = $state<PanelView>('installed');
+  let activeTab = $state<ActiveTab>('preset');
   let searchQuery = $state('');
   let selectedCategory = $state('all');
   let detailPlugin = $state<PluginMarketData | null>(null);
@@ -14,12 +19,26 @@
   let urlError = $state('');
   let installing = $state<Record<string, boolean>>({});
 
-  let storeState = $state({ installed: [] as InstalledPlugin[], market: [] as PluginMarketData[], marketLoading: false, marketFromCache: false, marketFetchedAt: 0, installProgress: {} as Record<string, { downloaded: number; total: number }>, blacklist: [] as string[] });
+  let storeState = $state({
+    installed: [] as InstalledPlugin[],
+    market: [] as PluginMarketData[],
+    marketLoading: false,
+    marketFromCache: false,
+    marketFetchedAt: 0,
+    installProgress: {} as Record<string, { downloaded: number; total: number }>,
+    blacklist: [] as string[],
+  });
 
-  // Top-level store subscription — do NOT wrap in $effect().
-  // Svelte 5 $effect tracks reads in subscribe callbacks, causing infinite loops.
+  let rendererState = $state({ plugins: [] as RendererPluginState[], initializing: true });
+
+  // Top-level store subscriptions — do NOT wrap in $effect().
   const unsubPlugin = pluginStore.subscribe(s => { storeState = s; });
-  onDestroy(() => { unsubPlugin(); });
+  const unsubRenderer = rendererManager.subscribe(s => { rendererState = s; });
+  onDestroy(() => { unsubPlugin(); unsubRenderer(); });
+
+  onMount(() => { rendererManager.init(); });
+
+  // ── Derived ─────────────────────────────────────
 
   const categories = $derived.by(() => {
     const cats = new Set(['all', ...storeState.market.map(p => p.category)]);
@@ -34,6 +53,8 @@
       return matchQuery && matchCat;
     })
   );
+
+  // ── Helpers ──────────────────────────────────────
 
   function isInstalled(id: string): boolean {
     return storeState.installed.some(p => p.manifest.id === id);
@@ -63,6 +84,22 @@
   function toEntry(p: InstalledPlugin): PluginStateEntry {
     return { id: p.manifest.id, enabled: p.enabled, pluginDir: p.pluginDir, installedAt: p.installedAt, manifest: p.manifest };
   }
+
+  function getRendererState(id: string): RendererPluginState {
+    return rendererState.plugins.find(p => p.id === id) ?? { id, enabled: false, status: 'idle' };
+  }
+
+  function statusLabel(status: RendererPluginState['status']): string {
+    switch (status) {
+      case 'downloading': return $t('plugins.preset.downloading');
+      case 'loading': return $t('plugins.preset.loading');
+      case 'ready': return $t('plugins.preset.ready');
+      case 'error': return $t('plugins.preset.error');
+      default: return '';
+    }
+  }
+
+  // ── Actions ──────────────────────────────────────
 
   async function handleToggle(plugin: InstalledPlugin): Promise<void> {
     const entry = toEntry(plugin);
@@ -107,7 +144,6 @@
     urlError = '';
     if (!validatingUrl.trim()) return;
 
-    // Convert GitHub repo URL to raw plugin.json URL
     let rawUrl = validatingUrl.trim();
     if (rawUrl.includes('github.com/') && !rawUrl.includes('raw.githubusercontent.com')) {
       rawUrl = rawUrl.replace('https://github.com/', 'https://raw.githubusercontent.com/') + '/main/plugin.json';
@@ -120,11 +156,9 @@
     }
     if (!result.manifest) return;
 
-    // Show simple confirmation and install from local zip approach via URL
     const confirmMsg = `${$t('plugins.install.confirmUrl')}\n\n${result.manifest.name} v${result.manifest.version}\n${$t('plugins.install.author')}: ${result.manifest.author}\n${$t('plugins.install.permissions')}: ${result.manifest.permissions.join(', ') || $t('plugins.install.noPermissions')}`;
     if (!confirm(confirmMsg)) return;
 
-    // For URL-imported plugins, get the latest release download URL
     const repoUrl = validatingUrl.trim().replace(/\/$/, '');
     const owner_repo = repoUrl.replace('https://github.com/', '');
     const platform = detectPlatform();
@@ -141,7 +175,6 @@
         return name.endsWith('linux.zip');
       });
       if (!asset) throw new Error($t('plugins.error.platformNotSupported'));
-      // URL-imported plugins have no registry SHA256 — install without hash check
       const res = await pluginStore.installFromUrl(result.manifest.id, asset.browser_download_url, '');
       if (!res.ok && res.error) alert(res.error);
       else validatingUrl = '';
@@ -160,8 +193,8 @@
     return 'linux-x86_64';
   }
 
-  function openMarket(): void {
-    view = 'market';
+  function openMarketplace(): void {
+    activeTab = 'market';
     if (storeState.market.length === 0) {
       pluginStore.fetchMarket(false);
     }
@@ -173,27 +206,121 @@
   <div class="tab-bar">
     <button
       class="tab-btn"
-      class:active={view === 'installed'}
-      onclick={() => { view = 'installed'; detailPlugin = null; }}
+      class:active={activeTab === 'preset'}
+      onclick={() => { activeTab = 'preset'; detailPlugin = null; }}
+    >
+      {$t('plugins.tabs.preset')}
+    </button>
+    <button
+      class="tab-btn"
+      class:active={activeTab === 'installed'}
+      onclick={() => { activeTab = 'installed'; detailPlugin = null; }}
     >
       {$t('plugins.tabs.installed')} ({storeState.installed.length})
     </button>
     <button
       class="tab-btn"
-      class:active={view === 'market'}
-      onclick={openMarket}
+      class:active={activeTab === 'market'}
+      onclick={openMarketplace}
     >
       {$t('plugins.tabs.market')}
     </button>
   </div>
 
-  <!-- ── INSTALLED VIEW ── -->
-  {#if view === 'installed'}
+  <!-- ── PRESET RENDERER PLUGINS TAB ── -->
+  {#if activeTab === 'preset'}
+    <div class="plugin-list">
+      {#if rendererState.initializing}
+        <div class="loading-state">{$t('plugins.preset.initializing')}</div>
+      {:else}
+        {#each RENDERER_PLUGINS as plugin (plugin.id)}
+          {@const ps = getRendererState(plugin.id)}
+          {@const isLarge = plugin.sizeKb > 500}
+          <div class="plugin-card preset-card" class:enabled={ps.enabled}>
+            <div class="plugin-card-header">
+              <span class="plugin-name">{plugin.name}</span>
+              <span class="preset-size" class:large={isLarge}>
+                ~{plugin.sizeKb >= 1000 ? (plugin.sizeKb / 1000).toFixed(1) + ' MB' : plugin.sizeKb + ' KB'}
+                {#if isLarge}<span class="large-warning" data-tooltip={$t('plugins.preset.largeBundle')}>⚠</span>{/if}
+              </span>
+              <div class="plugin-actions">
+                {#if ps.status === 'downloading' || ps.status === 'loading'}
+                  <span class="status-badge loading">{statusLabel(ps.status)}</span>
+                  <button class="btn-secondary" onclick={() => rendererManager.cancel(plugin.id)}>
+                    {$t('plugins.preset.cancel')}
+                  </button>
+                {:else if ps.status === 'error'}
+                  <button class="btn-secondary" onclick={() => rendererManager.update(plugin.id)}>
+                    {$t('plugins.preset.retry')}
+                  </button>
+                {:else if ps.status === 'ready'}
+                  <!-- Downloaded and in memory (enabled=true) -->
+                  <label class="toggle-switch">
+                    <input
+                      type="checkbox"
+                      checked={ps.enabled}
+                      onchange={() => ps.enabled ? rendererManager.disable(plugin.id) : rendererManager.enable(plugin.id)}
+                    />
+                    <span class="toggle-slider"></span>
+                  </label>
+                  <button class="btn-danger-sm" disabled>
+                    {$t('plugins.preset.delete')}
+                  </button>
+                {:else if ps.installedVersion}
+                  <!-- Downloaded but disabled (file on disk, not in memory) -->
+                  <label class="toggle-switch">
+                    <input
+                      type="checkbox"
+                      checked={false}
+                      onchange={() => rendererManager.enable(plugin.id)}
+                    />
+                    <span class="toggle-slider"></span>
+                  </label>
+                  <button class="btn-danger-sm" onclick={() => rendererManager.delete(plugin.id)}>
+                    {$t('plugins.preset.delete')}
+                  </button>
+                {:else}
+                  <!-- Not downloaded -->
+                  <button class="btn-secondary" onclick={() => rendererManager.enable(plugin.id)}>
+                    {$t('plugins.preset.download')}
+                  </button>
+                {/if}
+              </div>
+            </div>
+            {#if ps.status === 'error' && ps.error}
+              <div class="preset-error">{ps.error}</div>
+            {/if}
+            <div class="plugin-desc">{plugin.description}</div>
+            <div class="preset-langs">
+              {#each plugin.languages as lang}
+                <code class="lang-chip">{lang}</code>
+              {/each}
+            </div>
+            <div class="plugin-meta">
+              ★ {plugin.stars >= 1000 ? (plugin.stars / 1000).toFixed(1) + 'k' : plugin.stars}
+              ·
+              v{(rendererVersions as Record<string, string>)[plugin.npmPackage] ?? '—'}
+              ·
+              <span
+                class="plugin-homepage"
+                role="link"
+                tabindex="0"
+                onclick={() => openUrl(plugin.homepage)}
+                onkeydown={(e) => e.key === 'Enter' && openUrl(plugin.homepage)}
+              >{plugin.homepage.replace(/^https?:\/\//, '')}</span>
+            </div>
+          </div>
+        {/each}
+      {/if}
+    </div>
+
+  <!-- ── INSTALLED (MARKET PLUGINS) TAB ── -->
+  {:else if activeTab === 'installed'}
     <div class="plugin-list">
       {#if storeState.installed.length === 0}
         <div class="empty-state">
           <p>{$t('plugins.installed.empty')}</p>
-          <button class="btn-secondary" onclick={openMarket}>{$t('plugins.tabs.market')}</button>
+          <button class="btn-secondary" onclick={openMarketplace}>{$t('plugins.tabs.market')}</button>
         </div>
       {:else}
         {#each storeState.installed as plugin (plugin.manifest.id)}
@@ -265,7 +392,7 @@
       </div>
     </div>
 
-  <!-- ── MARKET VIEW ── -->
+  <!-- ── MARKETPLACE TAB ── -->
   {:else}
     <div class="market-toolbar">
       <input
@@ -450,7 +577,7 @@
 
   /* Tabs */
   .tab-bar { display: flex; gap: 0; border-bottom: 1px solid var(--border-color); flex-shrink: 0; }
-  .tab-btn { padding: 8px 16px; background: none; border: none; border-bottom: 2px solid transparent; color: var(--text-secondary); cursor: pointer; font-size: var(--font-size-sm); transition: all 0.15s; }
+  .tab-btn { padding: 8px 14px; background: none; border: none; border-bottom: 2px solid transparent; color: var(--text-secondary); cursor: pointer; font-size: var(--font-size-sm); transition: all 0.15s; }
   .tab-btn:hover { color: var(--text-primary); }
   .tab-btn.active { color: var(--accent-color); border-bottom-color: var(--accent-color); }
 
@@ -462,11 +589,60 @@
     border-radius: 8px;
     padding: 12px;
     background: var(--bg-secondary);
-    cursor: pointer;
     transition: border-color 0.15s;
   }
-  .plugin-card:hover, .plugin-card.selected { border-color: var(--accent-color); }
+  .plugin-card:hover { border-color: var(--accent-color); }
+  .plugin-card.selected { border-color: var(--accent-color); }
   .plugin-card.blacklisted { border-color: #ef4444; background: rgba(239, 68, 68, 0.05); }
+
+  /* Preset plugin card */
+  .preset-card.enabled { border-color: var(--accent-color); }
+
+  .preset-size { font-size: var(--font-size-xs); color: var(--text-tertiary); }
+  .preset-size.large { color: #e67e22; }
+  .large-warning {
+    cursor: help;
+    position: relative;
+  }
+  .large-warning::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-size: 11px;
+    min-width: 200px;
+    max-width: 300px;
+    word-wrap: break-word;
+    white-space: normal;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    z-index: 200;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  }
+  .large-warning:hover::after { opacity: 1; }
+
+  .preset-langs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  .lang-chip { font-size: 11px; background: var(--bg-tertiary); color: var(--text-secondary); padding: 2px 6px; border-radius: 4px; font-family: var(--font-mono); }
+
+  .plugin-link { font-size: 11px; color: var(--accent-color); text-decoration: none; }
+  .plugin-link:hover { text-decoration: underline; }
+
+  .plugin-homepage { font-size: 11px; color: var(--accent-color); text-decoration: none; cursor: pointer; }
+  .plugin-homepage:hover { text-decoration: underline; }
+
+  /* Status badges */
+  .status-badge { font-size: var(--font-size-xs); padding: 3px 8px; border-radius: 10px; }
+  .status-badge.loading { color: var(--text-secondary); background: var(--bg-tertiary); }
+
+  /* Buttons */
+  .btn-sm { padding: 4px 10px !important; }
 
   .plugin-card-header { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .plugin-name { font-weight: 600; font-size: var(--font-size-sm); color: var(--text-primary); flex: 1; min-width: 0; }
@@ -501,11 +677,13 @@
   .btn-secondary:hover { border-color: var(--accent-color); color: var(--accent-color); }
   .btn-danger-sm { padding: 4px 10px; border: 1px solid #ef4444; border-radius: 6px; background: transparent; color: #ef4444; cursor: pointer; font-size: var(--font-size-xs); }
   .btn-danger-sm:hover { background: rgba(239,68,68,0.1); }
+  .btn-danger-sm:disabled { opacity: 0.5; cursor: not-allowed; color: var(--text-tertiary); border-color: var(--border-color); }
   .btn-install { padding: 5px 14px; border: none; border-radius: 6px; background: var(--accent-color); color: white; cursor: pointer; font-size: var(--font-size-xs); white-space: nowrap; }
   .btn-install:disabled { opacity: 0.5; cursor: not-allowed; }
 
   /* Errors / warnings */
   .process-error, .blacklist-warning, .url-error { font-size: var(--font-size-xs); color: #ef4444; margin-top: 4px; }
+  .preset-error { font-size: var(--font-size-xs); color: #ef4444; margin-top: 4px; word-break: break-all; }
   .cache-notice { font-size: var(--font-size-xs); color: var(--text-tertiary); padding: 4px 12px; text-align: right; }
 
   /* Local install row */

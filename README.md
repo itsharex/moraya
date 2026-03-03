@@ -9,7 +9,7 @@
 
 ![](https://raw.githubusercontent.com/zouwei/resource/master/images/moraya/20260302-185211.-image.png)
 
-![](https://raw.githubusercontent.com/zouwei/resource/master/images/moraya/20260214-165318.-image.png)
+![](https://raw.githubusercontent.com/zouwei/resource/master/images/moraya/20260303-131729.-image.png)
 
 ![](https://raw.githubusercontent.com/zouwei/resource/master/images/moraya/20260214-165329.-image.png)
 
@@ -109,7 +109,7 @@
 
 ## Architecture Overview
 
-```
+```text
 ┌────────────────────────────────────────────────────────┐
 │              Tauri WebView (Frontend)                  │
 │        Svelte 5 + ProseMirror + TypeScript             │
@@ -218,6 +218,27 @@ Open Settings (`Cmd+,` / `Ctrl+,`) and select the **AI** and **Voice** tab. Conf
 All API keys are stored exclusively in your OS Keychain — never in plaintext. Click **Test Connection** in each section to verify before use.
 
 ## Development Roadmap
+
+
+| Version | Feature | Status |
+|---------|---------|--------|
+| v0.1.0-v0.3.0 | Core Editor, AI Integration, MCP Ecosystem | Complete |
+| v0.4.0 | MCP Container & Dynamic Services | Complete |
+| v0.5.0 | Publish Workflow (SEO, AIGC, GitHub/RSS) | Complete |
+| v0.6.0 | Security Hardening (Keychain, CSP, Path validation) | Complete |
+| v0.7.0-v0.8.0 | Image Scaling, Image Hosting (5 providers) | Complete |
+| v0.9.0-v0.10.0 | AI Prompt Templates, Editor UX Enhancement | Complete |
+| v0.11.0 | Multi-Tab Editing | Complete |
+| v0.12.0 | Plugin System | Complete |
+| v0.13.0 | Mermaid Diagram Support | Complete |
+| v0.14.0 | AI Model & Image Hosting Enhancement | Complete |
+| v0.15.0 | AI Voice Transcription | Complete |
+| v0.16.0-v0.17.0 | Search & Replace, ProseMirror Performance | Complete |
+| v0.18.0 | Document Outline, Table Keys, Freeze Fix | Complete |
+| v0.19.0 | Rendering Pipeline v2 (Doc Cache, hljs Cache, Async Parse) | Complete |
+| v0.20.0 | Multi-Language Support (12 locales, RTL) | Complete |
+| v0.21.0 | AI-powered rule file automatic splitting engine | Complete |
+| v0.22.0 | Built-in plugins, 10 new mainstream plugins added |
 
 ## License
 

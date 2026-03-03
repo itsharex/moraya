@@ -1027,6 +1027,100 @@ async fn enrich_plugin_entry(
     Ok(entry)
 }
 
+// ---------------------------------------------------------------------------
+// Renderer Plugin download (whitelist-only CDN)
+// ---------------------------------------------------------------------------
+
+/// Allowed CDN hostnames for renderer plugin downloads.
+const RENDERER_CDN_ALLOWLIST: &[&str] = &[
+    "cdn.jsdelivr.net",
+    "unpkg.com",
+    "registry.npmjs.org",
+];
+
+fn validate_renderer_url(url: &str) -> Result<(), String> {
+    let parsed = reqwest::Url::parse(url).map_err(|_| "Invalid URL".to_string())?;
+    if parsed.scheme() != "https" {
+        return Err("Only HTTPS URLs are allowed".to_string());
+    }
+    let host = parsed.host_str().unwrap_or("");
+    if !RENDERER_CDN_ALLOWLIST.contains(&host) {
+        return Err(format!("CDN host '{}' is not in the allowlist", host));
+    }
+    Ok(())
+}
+
+/// Download a renderer plugin JS bundle from an approved CDN and cache it locally.
+/// Returns the absolute local file path for use with `convertFileSrc()`.
+#[tauri::command]
+pub async fn download_renderer_plugin(
+    app: tauri::AppHandle,
+    plugin_id: String,
+    url: String,
+) -> Result<String, String> {
+    // Validate plugin_id: alphanumeric, hyphen, underscore, dot only
+    if !plugin_id
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+    {
+        return Err("Invalid plugin id".to_string());
+    }
+
+    // Validate URL against CDN allowlist
+    validate_renderer_url(&url)?;
+
+    // Resolve output path: {appDataDir}/renderer-plugins/{plugin_id}/index.js
+    let data_dir = app.path().app_data_dir().map_err(|_| "Cannot resolve app data dir".to_string())?;
+    let plugin_dir = data_dir.join("renderer-plugins").join(&plugin_id);
+    std::fs::create_dir_all(&plugin_dir).map_err(|_| "Cannot create plugin directory".to_string())?;
+    let out_path = plugin_dir.join("index.js");
+
+    // Skip download if the file already exists on disk (idempotent re-enable)
+    if out_path.exists() && out_path.is_file() {
+        return Ok(out_path.to_string_lossy().into_owned());
+    }
+
+    // Download with streaming
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(60))
+        .user_agent("Moraya/0.22.0")
+        .build()
+        .map_err(|_| "HTTP client error".to_string())?;
+
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Network error: {}", e))?;
+
+    if !resp.status().is_success() {
+        return Err(format!("HTTP {} from {}", resp.status().as_u16(), url));
+    }
+
+    let bytes = resp.bytes().await.map_err(|e| format!("Read error: {}", e))?;
+
+    std::fs::write(&out_path, &bytes).map_err(|e| format!("Write error: {}", e))?;
+
+    Ok(out_path.to_string_lossy().into_owned())
+}
+
+/// Delete a downloaded renderer plugin bundle from disk.
+#[tauri::command]
+pub async fn delete_renderer_plugin(app: tauri::AppHandle, plugin_id: String) -> Result<(), String> {
+    if !plugin_id
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+    {
+        return Err("Invalid plugin id".to_string());
+    }
+    let data_dir = app.path().app_data_dir().map_err(|_| "Cannot resolve app data dir".to_string())?;
+    let plugin_dir = data_dir.join("renderer-plugins").join(&plugin_id);
+    if plugin_dir.exists() {
+        std::fs::remove_dir_all(&plugin_dir).map_err(|_| "Failed to delete plugin".to_string())?;
+    }
+    Ok(())
+}
+
 /// Fetch blacklist and return IDs that should be force-disabled.
 #[tauri::command]
 pub async fn plugin_fetch_blacklist() -> Result<Vec<String>, String> {
