@@ -297,7 +297,7 @@ jobs:
               echo "Renaming: $ASSET_NAME -> $NEW_NAME"
               gh api --method PATCH \
                 "repos/${{ github.repository }}/releases/assets/${ASSET_ID}" \
-                -f name="${NEW_NAME}"
+                -f name="${NEW_NAME}" 2>/dev/null || echo "  Skipped (target name already exists)"
             fi
           done
 
