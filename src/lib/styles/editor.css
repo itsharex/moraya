@@ -568,10 +568,16 @@
   margin: 1.5em 0;
 }
 
-/* Tables */
+/* Tables — prosemirror-tables wraps each table in .tableWrapper */
+.moraya-editor .tableWrapper {
+  width: 100%;
+  overflow-x: auto;
+}
+
 .moraya-editor table {
   border-collapse: collapse;
-  width: 100%;
+  /* !important overrides prosemirror-tables inline style="width:Xpx" set by columnResizing() */
+  width: 100% !important;
   margin: 1em 0;
   table-layout: auto;
 }
@@ -579,7 +585,7 @@
 .moraya-editor th,
 .moraya-editor td {
   border: 1px solid var(--border-color);
-  padding: 0.5em 0.8em;
+  padding: 0.1em 0.8em;
   text-align: left;
   word-wrap: break-word;
   word-break: break-word;
@@ -808,4 +814,13 @@
 
 [dir="rtl"] .ProseMirror p.is-editor-empty:first-child::before {
   float: right;
+}
+
+/* cursor-syntax plugin: cursor-activated markdown source display */
+.syntax-md-prefix,
+.syntax-md-mark {
+  color: var(--text-muted);
+  opacity: 0.45;
+  user-select: none;
+  pointer-events: none;
 }

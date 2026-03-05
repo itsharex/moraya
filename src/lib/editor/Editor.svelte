@@ -201,11 +201,18 @@
       // - next line exists and is non-empty (single newline, not paragraph break)
       // - line doesn't already end with two+ spaces (existing hard break)
       // - line doesn't already end with backslash (backslash hard break syntax)
+      // - current line is NOT a GFM table row (starts with |) — table rows must not
+      //   get trailing spaces or markdown-it will fail to detect the table structure
+      // - next line is NOT a GFM table row — same reason (protects the header line)
       const nextLine = lines[i + 1];
+      const isTableRow = line.trimStart().startsWith('|');
+      const nextIsTableRow = nextLine !== undefined && nextLine.trimStart().startsWith('|');
       if (
         line.length > 0 &&
         !line.endsWith('  ') &&
         !line.endsWith('\\') &&
+        !isTableRow &&
+        !nextIsTableRow &&
         nextLine !== undefined &&
         nextLine.length > 0
       ) {
@@ -1449,13 +1456,38 @@
         }
       }
 
-      // Save cursor position
+      // Save cursor position using text-content matching (fraction-based is inaccurate
+      // because ProseMirror positions include node boundary tokens that inflate docSize)
       try {
         const view = editor.view;
         const { from } = view.state.selection;
-        const docSize = view.state.doc.content.size;
-        const fraction = docSize > 0 ? from / docSize : 0;
-        cursorOffset = Math.round(fraction * flushContent.length);
+        const doc = view.state.doc;
+        // Get plain text before the cursor (no separator — pure text content)
+        const textBefore = doc.textBetween(0, from, '\n', '');
+        // Find where this text ends in the markdown string by searching from an approximate
+        // position backwards. Use a suffix search: try progressively shorter suffixes until
+        // we find a match, then return the end position of the first match.
+        const approxFraction = doc.content.size > 0 ? from / doc.content.size : 0;
+        const approxPos = Math.floor(approxFraction * flushContent.length);
+        // Try suffix lengths: 20 chars, 10 chars, 5 chars, 1 char, fallback to 0
+        const suffixLengths = [20, 10, 5, 1];
+        let found = false;
+        for (const suffLen of suffixLengths) {
+          if (textBefore.length < suffLen) continue;
+          const suffix = textBefore.slice(-suffLen);
+          // Search forward from approxPos - suffix length context
+          const searchFrom = Math.max(0, approxPos - suffLen * 3);
+          const idx = flushContent.indexOf(suffix, searchFrom);
+          if (idx !== -1) {
+            cursorOffset = idx + suffix.length;
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          // Fallback: use fraction-based approximation
+          cursorOffset = approxPos;
+        }
       } catch {
         // Ignore errors during position save
       }

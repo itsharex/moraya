@@ -138,11 +138,13 @@ export function createEnterHandlerPlugin(): Plugin {
 
         // Single depth traversal to determine context: table cell or list item
         let inTable = false;
+        let cellDepth = -1;
         let inListItem = false;
         for (let d = $from.depth; d > 0; d--) {
           const nodeName = $from.node(d).type.name;
           if (nodeName === 'table_cell' || nodeName === 'table_header') {
             inTable = true;
+            cellDepth = d;
             break;
           }
           if (nodeName === 'list_item') {
@@ -151,13 +153,13 @@ export function createEnterHandlerPlugin(): Plugin {
           }
         }
 
-        // ── Table cell: Ctrl/Cmd+Enter → add row, Shift+Enter → hard break ──
+        // ── Table cell ──
         if (inTable) {
+          // Ctrl/Cmd+Enter → add row after and move cursor there
           if ((event.ctrlKey || event.metaKey) && !event.shiftKey) {
             event.preventDefault();
             addRowAfter(view.state, view.dispatch);
 
-            // Move cursor to the new row
             const { $from: $cur } = view.state.selection;
             for (let d = $cur.depth; d > 0; d--) {
               const name = $cur.node(d).type.name;
@@ -175,12 +177,58 @@ export function createEnterHandlerPlugin(): Plugin {
             return true;
           }
 
+          // Shift+Enter → insert hard break
           if (event.shiftKey && !event.ctrlKey && !event.metaKey) {
             event.preventDefault();
             const hardbreak = view.state.schema.nodes.hardbreak;
             if (hardbreak) {
               const tr = view.state.tr.replaceSelectionWith(hardbreak.create());
               view.dispatch(tr.scrollIntoView());
+            }
+            return true;
+          }
+
+          // Plain Enter → move to same column in next row; exit table from last row
+          if (!event.shiftKey && !event.ctrlKey && !event.metaKey) {
+            event.preventDefault();
+
+            if (cellDepth < 2) return true; // safety guard
+
+            const rowDepth   = cellDepth - 1;
+            const tableDepth = cellDepth - 2;
+            const colIndex   = $from.index(rowDepth);
+            const rowIndex   = $from.index(tableDepth);
+            const tableNode  = $from.node(tableDepth);
+            const tableStart = $from.start(tableDepth);
+
+            if (rowIndex === tableNode.childCount - 1) {
+              // Last row → exit table: move to next block, or insert paragraph
+              const tableEnd = $from.after(tableDepth);
+              const afterNode = view.state.doc.nodeAt(tableEnd);
+              if (afterNode) {
+                const $target = view.state.doc.resolve(tableEnd + 1);
+                view.dispatch(view.state.tr.setSelection(TextSelection.near($target)).scrollIntoView());
+              } else {
+                const tr = view.state.tr.insert(tableEnd, view.state.schema.nodes.paragraph.create());
+                const $target = tr.doc.resolve(tableEnd + 1);
+                tr.setSelection(TextSelection.near($target));
+                view.dispatch(tr.scrollIntoView());
+              }
+            } else {
+              // Move to same column in next row
+              const nextRow = tableNode.child(rowIndex + 1);
+              const safeCol = Math.min(colIndex, nextRow.childCount - 1);
+              let targetPos = tableStart;
+              for (let r = 0; r <= rowIndex; r++) {
+                targetPos += tableNode.child(r).nodeSize;
+              }
+              targetPos += 1; // enter next row
+              for (let c = 0; c < safeCol; c++) {
+                targetPos += nextRow.child(c).nodeSize;
+              }
+              targetPos += 1; // enter target cell
+              const $target = view.state.doc.resolve(targetPos);
+              view.dispatch(view.state.tr.setSelection(TextSelection.near($target)).scrollIntoView());
             }
             return true;
           }
@@ -200,7 +248,10 @@ export function createEnterHandlerPlugin(): Plugin {
             // Only ```language creates a code block; bare ``` is treated as
             // normal text (prevents closing fences from pasted code blocks
             // from spawning empty code blocks).
-            const match = text.match(/^```(\S+)\s*$/);
+            // Guard: cursor must be at end of paragraph (user finished typing the fence).
+            const match = $from.parentOffset === text.length
+              ? text.match(/^```(\S+)\s*$/)
+              : null;
             if (match) {
               const language = match[1];
               const codeBlockType = view.state.schema.nodes.code_block;
@@ -215,7 +266,12 @@ export function createEnterHandlerPlugin(): Plugin {
             }
 
             // Pipe-separated table header: | col1 | col2 | ... |
-            const headers = parsePipeTableHeader(text);
+            // Only trigger when cursor is at the END of the paragraph (same guard as
+            // the code-fence check above). If the cursor is mid-line the user is
+            // editing the header text, not finishing it — fall through to splitBlock.
+            const headers = $from.parentOffset === text.length
+              ? parsePipeTableHeader(text)
+              : null;
             if (headers) {
               // Ensure the parent context allows a table node (not inside blockquote/table cell)
               const $para = view.state.doc.resolve($from.before());

@@ -117,38 +117,13 @@ const parserTokens: Record<string, import('prosemirror-markdown').ParseSpec> = {
   },
 
   // ── Table tokens ──
+  // NOTE: tr/th/td are NOT listed here — they are handled by custom tokenHandler
+  // overrides in MorayaMarkdownParser below. The `block:` spec alone can't
+  // handle (a) thead-row → table_header_row vs table_row dispatch, or
+  // (b) wrapping inline content in the required paragraph child of each cell.
   table: { block: 'table' },
   thead: { ignore: true },
   tbody: { ignore: true },
-  tr: {
-    block: 'table_row',
-    getAttrs(_token, tokens, index) {
-      // Determine if this is a header row: check if parent is thead
-      // by looking backwards for thead_open
-      for (let i = index - 1; i >= 0; i--) {
-        const t = tokens[i];
-        if (t.type === 'thead_open') return { __header: true };
-        if (t.type === 'thead_close' || t.type === 'tbody_open') break;
-      }
-      return {};
-    },
-  },
-  th: {
-    block: 'table_header',
-    getAttrs(token) {
-      const style = token.attrGet('style') || '';
-      const match = style.match(/text-align:\s*(\w+)/);
-      return { alignment: match ? match[1] : 'left' };
-    },
-  },
-  td: {
-    block: 'table_cell',
-    getAttrs(token) {
-      const style = token.attrGet('style') || '';
-      const match = style.match(/text-align:\s*(\w+)/);
-      return { alignment: match ? match[1] : 'left' };
-    },
-  },
 
   // ── Definition list tokens ──
   dl: { block: 'defList' },
@@ -202,79 +177,76 @@ const parserTokens: Record<string, import('prosemirror-markdown').ParseSpec> = {
 };
 
 /**
- * Custom MarkdownParser that handles table header rows.
+ * Custom MarkdownParser that correctly handles GFM table structure.
  *
- * prosemirror-markdown's default parser maps `tr` tokens uniformly,
- * but our schema requires `table_header_row` for <thead> rows.
- * We post-process the parsed doc to convert header rows.
+ * Two problems with the default prosemirror-markdown `block:` approach for tables:
+ *
+ * 1. `table_header` and `table_cell` both have `content: 'paragraph+'` in our schema.
+ *    prosemirror-markdown opens the cell block, then adds raw inline text via addText().
+ *    When closeNode() calls createAndFill(attrs, [text("A")]), the content match
+ *    for `paragraph+` cannot fit a bare text node, so createAndFill() returns null
+ *    and the cell (and all its content) is silently dropped → empty table.
+ *
+ * 2. `table: content: 'table_header_row table_row+'` requires the first child to be
+ *    a `table_header_row`, but the default `tr` handler always creates `table_row`.
+ *    ProseMirror's createAndFill() then auto-inserts an empty `table_header_row`
+ *    at the front, leaving the real header data in a wrongly-typed `table_row`.
+ *
+ * Fix: override tr/th/td tokenHandlers in the constructor to:
+ *  - tr_open inside <thead> → open `table_header_row` instead of `table_row`
+ *  - th_open → open `table_header`, then open an inner `paragraph`
+ *  - th_close → close `paragraph`, then close `table_header`
+ *  - td_open/close → same pattern with `table_cell`
  */
 class MorayaMarkdownParser extends MarkdownParser {
-  override parse(text: string, markdownEnv?: object) {
-    const doc = super.parse(text, markdownEnv);
-    // Post-process: convert table_row nodes that were in <thead>
-    // to table_header_row nodes
-    return transformHeaderRows(doc);
-  }
-}
+  constructor() {
+    super(schema, md, parserTokens);
 
-/**
- * Walk the document and replace table_row nodes containing table_header
- * cells with table_header_row nodes.
- */
-function transformHeaderRows(doc: PmNode): PmNode {
-  const result: PmNode[] = [];
-  let changed = false;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const h: Record<string, (state: any, tok: any, tokens: any[], i: number) => void> =
+      (this as any).tokenHandlers;
 
-  doc.forEach((child, _offset) => {
-    if (child.type === schema.nodes.table) {
-      const tableChildren: PmNode[] = [];
-      let tableChanged = false;
-
-      child.forEach((row, _rowOffset, rowIndex) => {
-        // First row of a table that contains table_header cells → table_header_row
-        if (rowIndex === 0 && row.type === schema.nodes.table_row) {
-          let hasHeaders = false;
-          row.forEach(cell => {
-            if (cell.type === schema.nodes.table_header) hasHeaders = true;
-          });
-
-          if (hasHeaders) {
-            // Wrap cells in paragraph if they're inline content
-            const headerRow = schema.nodes.table_header_row.create(null, row.content);
-            tableChildren.push(headerRow);
-            tableChanged = true;
-            return;
-          }
-        }
-        tableChildren.push(row);
-      });
-
-      if (tableChanged) {
-        result.push(schema.nodes.table.create(child.attrs, tableChildren));
-        changed = true;
-      } else {
-        result.push(child);
-      }
-    } else if (child.childCount > 0) {
-      const transformed = transformHeaderRows(child);
-      if (transformed !== child) {
-        changed = true;
-        result.push(transformed);
-      } else {
-        result.push(child);
-      }
-    } else {
-      result.push(child);
+    function cellAlignment(tok: { attrGet(s: string): string | null }): string {
+      const style = tok.attrGet('style') || '';
+      const m = style.match(/text-align:\s*(\w+)/);
+      return m ? m[1] : 'left';
     }
-  });
 
-  if (!changed) return doc;
-  return doc.copy(schema.nodes.doc.contentMatch.defaultType
-    ? doc.type.create(doc.attrs, result).content
-    : doc.type.create(doc.attrs, result).content);
+    // tr_open: dispatch to table_header_row or table_row based on parent context
+    h['tr_open'] = (state, _tok, tokens, i) => {
+      let inThead = false;
+      for (let j = i - 1; j >= 0; j--) {
+        if (tokens[j].type === 'thead_open') { inThead = true; break; }
+        if (tokens[j].type === 'thead_close' || tokens[j].type === 'tbody_open') break;
+      }
+      state.openNode(inThead ? schema.nodes.table_header_row : schema.nodes.table_row, null);
+    };
+    h['tr_close'] = (state) => state.closeNode();
+
+    // th_open/close: open table_header + inner paragraph so inline text lands correctly
+    h['th_open'] = (state, tok) => {
+      state.openNode(schema.nodes.table_header, { alignment: cellAlignment(tok) });
+      state.openNode(schema.nodes.paragraph, null);
+    };
+    h['th_close'] = (state) => {
+      state.closeNode(); // close paragraph
+      state.closeNode(); // close table_header
+    };
+
+    // td_open/close: open table_cell + inner paragraph
+    h['td_open'] = (state, tok) => {
+      state.openNode(schema.nodes.table_cell, { alignment: cellAlignment(tok) });
+      state.openNode(schema.nodes.paragraph, null);
+    };
+    h['td_close'] = (state) => {
+      state.closeNode(); // close paragraph
+      state.closeNode(); // close table_cell
+    };
+  }
+
 }
 
-const parser = new MorayaMarkdownParser(schema, md, parserTokens);
+const parser = new MorayaMarkdownParser();
 
 // ── Serializer ──────────────────────────────────────────────────
 
@@ -470,49 +442,43 @@ const serializer = new MarkdownSerializer(
 
 /**
  * Helper: render a table row as `| cell1 | cell2 | ... |`
+ *
+ * Uses ProseMirror's built-in renderInline via output-buffer capture so that
+ * ALL inline content (text, marks, hard breaks, math, images, etc.) is
+ * serialized correctly — the same path used for headings and paragraphs.
  */
 function renderTableRow(state: MarkdownSerializerState, row: PmNode) {
   const cells: string[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const s = state as any;
   row.forEach(cell => {
-    // Serialize cell content inline
-    const para = cell.firstChild;
-    if (para && para.textContent) {
-      // Use a temporary serializer state to render inline content
-      const cellText = serializeCellContent(para);
-      cells.push(cellText);
-    } else {
-      cells.push('');
-    }
+    // Cells with 'paragraph+' content: each paragraph is one "line" in the cell.
+    // GFM cells are single-line, so join multiple paragraphs with a space.
+    const parts: string[] = [];
+    cell.forEach(para => {
+      if (para.type.name !== 'paragraph') return;
+      // Capture renderInline output by swapping the serializer's output buffer.
+      //
+      // IMPORTANT: prosemirror-markdown's text() calls write() for every line,
+      // and write() calls flushClose() which resets this.closed. We must save
+      // and restore BOTH out AND closed so the pending block-separator (the
+      // blank line between the preceding paragraph and this table) is not
+      // accidentally consumed here — it must survive until state.write('| … |')
+      // fires at the end of this function, where flushClose() will emit it.
+      const savedOut: string = s.out;
+      const savedClosed = s.closed;
+      s.out = '';
+      s.closed = null; // nothing to flush into the temp buffer
+      state.renderInline(para);
+      const piece: string = (s.out as string).replace(/\n/g, ' ').trim();
+      s.out = savedOut;
+      s.closed = savedClosed; // restore so state.write() below emits the blank line
+      parts.push(piece);
+    });
+    cells.push(parts.join(' '));
   });
   state.write(`| ${cells.join(' | ')} |`);
   state.ensureNewLine();
-}
-
-/**
- * Serialize a paragraph node's inline content to a plain markdown string.
- * Used for table cells where we need inline content without block wrappers.
- */
-function serializeCellContent(para: PmNode): string {
-  // Simple inline serialization: walk through marks and text
-  let result = '';
-  para.forEach(child => {
-    let text = child.text || '';
-    // Apply marks
-    for (const mark of child.marks) {
-      const spec = serializer.marks[mark.type.name];
-      if (spec) {
-        const open = typeof spec.open === 'function'
-          ? spec.open({} as MarkdownSerializerState, mark, para, 0)
-          : spec.open;
-        const close = typeof spec.close === 'function'
-          ? spec.close({} as MarkdownSerializerState, mark, para, 0)
-          : spec.close;
-        text = `${open}${text}${close}`;
-      }
-    }
-    result += text;
-  });
-  return result;
 }
 
 /**

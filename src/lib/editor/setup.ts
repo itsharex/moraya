@@ -23,6 +23,7 @@ import { schema } from './schema';
 import { parseMarkdown, serializeMarkdown } from './markdown';
 import { createEnterHandlerPlugin } from './plugins/enter-handler';
 import { createEditorPropsPlugin } from './plugins/editor-props-plugin';
+import { createCursorSyntaxPlugin } from './plugins/cursor-syntax';
 
 // ── Tier 1: Enhancement plugins (dynamic imports, loaded in parallel) ──
 
@@ -372,6 +373,10 @@ export async function createEditor(options: EditorOptions): Promise<MorayaEditor
     // Input rules (must come before keymaps)
     buildInputRules(tier1),
 
+    // Custom Enter handler MUST come before keymaps so pipe-table and
+    // code-fence detection run before baseKeymap's splitBlock intercepts Enter.
+    createEnterHandlerPlugin(),
+
     // Keymaps
     buildKeymap(),
     keymap(baseKeymap),
@@ -387,8 +392,10 @@ export async function createEditor(options: EditorOptions): Promise<MorayaEditor
     tableEditing(),
 
     // Custom plugins
-    createEnterHandlerPlugin(),
     createEditorPropsPlugin(),
+
+    // Cursor-activated source syntax display (Typora-style)
+    createCursorSyntaxPlugin(),
   ];
 
   // Change detection

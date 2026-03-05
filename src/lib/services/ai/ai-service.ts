@@ -477,7 +477,22 @@ function buildSystemPrompt(
   }
 
   if (toolCount > 0) {
-    prompt += ' You have access to tools. Use them when they can help answer the user\'s question. You can use add_mcp_server to help users install and configure new MCP servers.';
+    prompt += ' You have access to tools. Use them when they can help answer the user\'s question. You can use add_mcp_server to help users install and configure new MCP servers.' +
+      '\n\nIMPORTANT — When installing an MCP server, follow this decision tree in order:' +
+      '\n1. **stdio via npx (FIRST CHOICE for npm packages)**' +
+      '\n   If the server is published on npm (package name like `@scope/pkg` or `pkg-name`):' +
+      '\n   `transport_type: "stdio", command: "npx", args: ["-y", "<package-name>", ...extra-args]`' +
+      '\n   - No cloning, no building — npx downloads and runs the latest version automatically.' +
+      '\n   - This is the standard install method for the official MCP servers and most community servers.' +
+      '\n2. **stdio via uvx (for Python/uv-managed packages)**' +
+      '\n   If the server is a Python package distributed via uv/pip:' +
+      '\n   `transport_type: "stdio", command: "uvx", args: ["<package-name>", ...extra-args]`' +
+      '\n3. **http or sse (for remote/cloud servers)**' +
+      '\n   If the server is already running at a URL: `transport_type: "http", url: "http://..."`' +
+      '\n4. **Clone + local command (LAST RESORT ONLY)**' +
+      '\n   Only if: the package is NOT on npm/PyPI, OR the user explicitly needs to modify the source.' +
+      '\n   Never recommend cloning just because the user shared a GitHub URL — check the README for an npm package name first.' +
+      '\n\nFor GitHub URLs (e.g. https://github.com/org/repo): read the README to find the npm package name or uvx command, then use method 1 or 2. Do NOT clone by default.';
 
     // Image URL handling — always localize first, then upload; NEVER regenerate
     prompt +=
@@ -558,6 +573,7 @@ function buildSystemPrompt(
   // Dynamic service creation capability
   const nodeState = containerStore.getState();
   if (nodeState.nodeAvailable) {
+    const mcpDocDir = sidebarDir || fallbackDir;
     prompt +=
       '\n\nYou can create dynamic MCP services on-the-fly using create_mcp_service. Use this when:' +
       '\n- The user needs data from an HTTP API (REST, GraphQL) and no existing tool covers it' +
@@ -567,7 +583,15 @@ function buildSystemPrompt(
       '\n- Write handler code using Node.js built-in fetch() for HTTP calls' +
       '\n- Pass API keys as env variables, never hardcode them in handler code' +
       '\n- Keep handlers focused and include proper error handling' +
-      '\n- The service tools become immediately available for subsequent tool calls';
+      '\n- The service tools become immediately available for subsequent tool calls' +
+      '\n\nIMPORTANT — After create_mcp_service succeeds:' +
+      '\n- Do NOT call `update_editor_content` and do NOT call `write_file` targeting the currently open document. The service is ready — just report success in your reply text.' +
+      '\n- If the user explicitly asks to save documentation or notes about the service, write it as a new Markdown file using `write_file` with the following path priority:' +
+      (mcpDocDir
+        ? `\n  1. Knowledge base / sidebar directory: ${mcpDocDir}/<filename>.md`
+        : '\n  1. Knowledge base / sidebar directory: (none open — skip to step 2)') +
+      `\n  2. Fallback — system Documents directory: ${fallbackDir || '(unavailable)'}/<filename>.md` +
+      '\n- Never write service documentation into the currently open editor document unless the user explicitly names it as the target.';
   }
 
   // Renderer plugin AI hints — inject only for enabled+ready plugins
