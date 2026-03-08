@@ -1196,15 +1196,6 @@
     cursor: not-allowed;
   }
 
-  .ctrl-btn.danger {
-    border-color: #e53e3e;
-    color: #e53e3e;
-  }
-
-  .ctrl-btn.danger:hover:not(:disabled) {
-    background: rgba(229, 62, 62, 0.08);
-  }
-
   .ctrl-btn.icon {
     width: 1.75rem;
     height: 1.75rem;

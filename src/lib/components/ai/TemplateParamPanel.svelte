@@ -44,7 +44,7 @@
   <div class="param-header">
     <span class="param-icon">{template.icon}</span>
     <span class="param-title">{$t(template.nameKey)}</span>
-    <button class="close-btn" onclick={onCancel}>
+    <button class="close-btn" aria-label={$t('common.close')} onclick={onCancel}>
       <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
         <path d="M9.5 2.5l-7 7m0-7l7 7" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/>
       </svg>
@@ -55,7 +55,7 @@
     <div class="params-body">
       {#each template.params as param}
         <div class="param-group">
-          <label class="param-label">{$t(param.labelKey)}</label>
+          <div class="param-label">{$t(param.labelKey)}</div>
           {#if param.type === 'select'}
             <select
               class="param-select"
