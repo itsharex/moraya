@@ -654,8 +654,6 @@
                   oninput={(e) => { _editEnvRaw = (e.currentTarget as HTMLTextAreaElement).value; }}
                   placeholder={$t('mcp.servers.envPlaceholder')}
                   rows="4"
-                  autocorrect="off"
-                  autocapitalize="off"
                   spellcheck="false"
                 ></textarea>
               {:else}
@@ -759,8 +757,6 @@
                 oninput={(e) => { _newServerEnvRaw = (e.currentTarget as HTMLTextAreaElement).value; }}
                 placeholder={$t('mcp.servers.envPlaceholder')}
                 rows="4"
-                autocorrect="off"
-                autocapitalize="off"
                 spellcheck="false"
               ></textarea>
             {:else}
