@@ -2,6 +2,7 @@
   import {
     aiStore,
     sendChatMessage,
+    sendAIRequest,
     abortAIRequest,
     type ChatMessage,
     type ImageAttachment,
@@ -28,7 +29,6 @@
   import { compressImage, blobToBase64 } from '$lib/services/ai/image-utils';
   import TemplateGallery from './TemplateGallery.svelte';
   import TemplateParamPanel from './TemplateParamPanel.svelte';
-  import TranscriptionPanel from '../TranscriptionPanel.svelte';
 
   let {
     documentContent = '',
@@ -105,11 +105,53 @@
   let modelDropdownTriggerEl = $state<HTMLElement | undefined>(undefined);
   let modelDropdownEl = $state<HTMLElement | undefined>(undefined);
 
-  // Transcription panel
+  // Transcription panel / voice mode
   let showActionDrawer = $state(false);
   let showTranscription = $state(false);
   let actionDrawerEl = $state<HTMLDivElement | undefined>(undefined);
   let actionTriggerEl = $state<HTMLButtonElement | undefined>(undefined);
+
+  // Voice mode integrated state
+  type VoiceRecordingState = 'idle' | 'connecting' | 'recording' | 'stopping';
+  type VoiceSourceMode = 'mic' | 'system' | 'mixed';
+  type VoiceSessionMode = 'transcription' | 'interview';
+  type VoiceInterviewRow =
+    | { id: string; side: 'left'; speaker: string; text: string; timestamp: number }
+    | { id: string; side: 'right'; text: string; timestamp: number; status: 'pending' | 'done' | 'failed' };
+
+  let voiceRecordingState = $state<VoiceRecordingState>('idle');
+  let voiceSessionId = $state<string | null>(null);
+  let voiceSourceMode = $state<VoiceSourceMode>('mic');
+  let voiceSessionMode = $state<VoiceSessionMode>('transcription');
+  let voiceElapsedMs = $state(0);
+  let voiceStartTime = 0;
+  let voiceTimerRef: ReturnType<typeof setInterval> | null = null;
+  let voiceError = $state<string | null>(null);
+  // Voice transcription segments (both modes)
+  let voiceSegments = $state<TranscriptSegment[]>([]);
+  // Interview mode rows (left = question, right = AI answer)
+  let voiceInterviewRows = $state<VoiceInterviewRow[]>([]);
+  let voiceInterviewBusy = $state(false);
+  let voiceInterviewCursor = $state(0);
+  let voiceInterviewPendingContext = $state('');
+  let voiceInterviewLastQuestionKey = $state('');
+  let voiceSilenceTimer: ReturnType<typeof setTimeout> | null = null;
+  const voiceSpeakerColorMap = new Map<string, string>();
+
+  // Interview mode constants (mirrors TranscriptionPanel)
+  const VOICE_SPEAKER_COLORS = [
+    '#4A90E2', '#7ED321', '#D0021B', '#F5A623', '#9013FE',
+    '#50E3C2', '#B8E986', '#FF6B6B', '#4ECDC4', '#C7B42C',
+  ];
+  const INTERVIEW_SILENCE_MS = 3000;
+  const INTERVIEW_MIN_DELTA_CHARS = 4;
+  const INTERVIEW_MIN_SEGMENT_CHARS = 4;
+  const INTERVIEW_MIN_CONFIDENCE = 0.55;
+  const INTERVIEW_MAX_BUFFER_CHARS = 900;
+  const INTERVIEW_CONTEXT_WINDOW_CHARS = 520;
+  const INTERVIEW_QUESTION_WINDOW_CHARS = 220;
+  const INTERVIEW_QUESTION_CUE_RE = /[?？]|(什么|为何|为什么|怎么|如何|请问|是否|能否|可否|哪(里|个|些)?|多少|几|吗|呢|么|原理|区别|步骤|原因|方案|怎么做|介绍(?:一下|下)?|讲(?:一下|下)?|说(?:一下|下)?|请解释|帮我|给我|总结|分析)|\b(what|why|how|when|where|which|who|whom|whose|can|could|would|should|is|are|do|does|did|explain|tell me|walk me through|compare)\b/i;
+  const INTERVIEW_FILLER_ONLY_RE = /^(嗯+|呃+|啊+|额+|噢+|哦+|唉+|呀+|诶+|uh+|um+|er+|ah+|eh+|hmm+|mm+)([，。！？?!、~…\s]*)$/i;
 
   // Inline voice-to-text (input bar)
   let inlineRecordingState = $state<'idle' | 'recording'>('idle');
@@ -284,6 +326,11 @@
     if (inlineSessionId) {
       stopTranscription(inlineSessionId).catch(() => { /* ignore */ });
     }
+    if (voiceSessionId) {
+      stopTranscription(voiceSessionId).catch(() => { /* ignore */ });
+    }
+    stopVoiceTimer();
+    if (voiceSilenceTimer) { clearTimeout(voiceSilenceTimer); voiceSilenceTimer = null; }
     if (isRealtimeVoiceActive || rtSessionId) {
       stopRealtimeVoiceSession();
     }
@@ -354,6 +401,8 @@
     const _ = streamingContent;
     const _rt = rtCurrentResponse;
     const _ru = rtUserInterim;
+    const _vs = voiceSegments.length;
+    const _vr = voiceInterviewRows.length;
     const __ = chatMessages.length;
     if (userAtBottom && messagesEl) {
       if (scrollRaf) return; // skip if already pending
@@ -1066,6 +1115,303 @@
     onReplace?.(content);
   }
 
+  // ── Voice mode helper functions ─────────────────────────────────────────────
+
+  function getVoiceSpeakerColor(displayName: string): string {
+    if (!voiceSpeakerColorMap.has(displayName)) {
+      voiceSpeakerColorMap.set(displayName, VOICE_SPEAKER_COLORS[voiceSpeakerColorMap.size % VOICE_SPEAKER_COLORS.length]);
+    }
+    return voiceSpeakerColorMap.get(displayName)!;
+  }
+
+  function formatVoiceSegmentTime(ms: number): string {
+    const total = Math.floor(ms / 1000);
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  }
+
+  function voiceLineKey(text: string): string {
+    return text.toLowerCase().replace(/[\s\.,!?，。！？:：;；'"`~\-_/\\()[\]{}<>]/g, '');
+  }
+
+  function sanitizeVoiceInterviewLine(text: string): string {
+    return text
+      .replace(/^[\s【\[]?(?:speaker\s*\d+|说话人\s*\d+|路人\d*|passerby\d*|unknown|user|assistant|ai|面试官|候选人)\s*[:：]\s*/i, '')
+      .replace(/\s+/g, ' ')
+      .replace(/([，。！？?!])\1+/g, '$1')
+      .trim();
+  }
+
+  function isVoiceNoiseLine(line: string, confidence: number, hasReliableConfidence: boolean): boolean {
+    if (!line) return true;
+    if (line.length < INTERVIEW_MIN_SEGMENT_CHARS) return true;
+    if (INTERVIEW_FILLER_ONLY_RE.test(line)) return true;
+    if (!/[A-Za-z0-9\u4e00-\u9fff]/.test(line)) return true;
+    if (hasReliableConfidence && Number.isFinite(confidence) && confidence < INTERVIEW_MIN_CONFIDENCE) return true;
+    const compact = line.replace(/\s+/g, '');
+    if (compact.length >= 6 && new Set(compact.toLowerCase()).size <= 2) return true;
+    return false;
+  }
+
+  function appendVoiceInterviewBuffer(deltaText: string) {
+    if (!deltaText.trim()) return;
+    const next = voiceInterviewPendingContext ? `${voiceInterviewPendingContext}\n${deltaText}` : deltaText;
+    voiceInterviewPendingContext = next.length > INTERVIEW_MAX_BUFFER_CHARS ? next.slice(-INTERVIEW_MAX_BUFFER_CHARS) : next;
+  }
+
+  function extractVoiceInterviewQuestion(buffer: string): { focus: string; support: string } | null {
+    const normalized = buffer.trim();
+    if (!normalized) return null;
+    const parts = normalized.split(/[\n。！？?!]/).map(s => s.trim()).filter(Boolean);
+    if (parts.length === 0) return null;
+    const candidates = parts.filter(part => INTERVIEW_QUESTION_CUE_RE.test(part));
+    const focusRaw = (candidates.length > 0 ? candidates.slice(-2).join('；') : parts[parts.length - 1]).trim();
+    if (!focusRaw) return null;
+    const fallbackFocus = parts.slice(-2).join('；').trim() || parts[parts.length - 1];
+    return {
+      focus: (focusRaw || fallbackFocus).slice(-INTERVIEW_QUESTION_WINDOW_CHARS),
+      support: normalized.slice(-INTERVIEW_CONTEXT_WINDOW_CHARS),
+    };
+  }
+
+  function voiceQuestionSignature(text: string): string {
+    return voiceLineKey(text).slice(-160);
+  }
+
+  function clearVoiceSilenceTimer() {
+    if (voiceSilenceTimer) { clearTimeout(voiceSilenceTimer); voiceSilenceTimer = null; }
+  }
+
+  function resetVoiceInterviewContext(cursorAtEnd = false) {
+    voiceInterviewRows = [];
+    clearVoiceSilenceTimer();
+    voiceInterviewBusy = false;
+    voiceInterviewPendingContext = '';
+    voiceInterviewLastQuestionKey = '';
+    const finals = voiceSegments.filter(seg => seg.isFinal);
+    voiceInterviewCursor = cursorAtEnd ? finals.length : 0;
+  }
+
+  function scheduleVoiceInterviewAnswer() {
+    if (voiceSessionMode !== 'interview' || voiceRecordingState === 'idle' || voiceRecordingState === 'connecting') return;
+    clearVoiceSilenceTimer();
+    voiceSilenceTimer = setTimeout(() => {
+      triggerVoiceInterviewAnswer().catch((e) => console.error('[Voice Interview] trigger failed:', e));
+    }, INTERVIEW_SILENCE_MS);
+  }
+
+  async function requestVoiceInterviewAnswer(questionFocus: string, supportContext: string): Promise<string> {
+    const active = aiStore.getActiveConfig();
+    if (!active || !active.apiKey) throw new Error($t('transcription.interviewNoAIConfig'));
+    const maxTokens = Math.min($settingsStore.aiMaxTokens || active.maxTokens || 1024, 768);
+    const config = { ...active, maxTokens, temperature: Math.min(active.temperature ?? 0.2, 0.3) };
+    const now = Date.now();
+    const response = await sendAIRequest(config, {
+      messages: [
+        {
+          role: 'system',
+          content: 'You are an interview copilot. Every request is the latest transcript delta captured after about 3 seconds of silence. Treat it as the newest interview turn and answer directly even if the wording is incomplete. The ASR transcript may contain recognition errors; infer likely intent and avoid overfitting to noisy words. Focus on the core question first, then give a concise practical answer in Markdown bullet points.',
+          timestamp: now,
+        },
+        {
+          role: 'user',
+          content: `Question focus:\n${questionFocus}\n\nRecent transcript snippets (may contain ASR mistakes):\n${supportContext}\n\nPlease output:\n1) Direct answer first.\n2) If key terms may be misrecognized, list 1-2 likely corrected terms.\n3) Keep total length under 8 bullets.`,
+          timestamp: now + 1,
+        },
+      ],
+    });
+    const text = response.content?.trim();
+    if (!text) throw new Error($t('transcription.interviewEmptyAnswer'));
+    return text;
+  }
+
+  async function triggerVoiceInterviewAnswer() {
+    if (voiceSessionMode !== 'interview' || voiceInterviewBusy) return;
+    const finals = voiceSegments.filter(seg => seg.isFinal);
+    if (finals.length <= voiceInterviewCursor) return;
+    const deltaSegs = finals.slice(voiceInterviewCursor);
+    voiceInterviewCursor = finals.length;
+    const hasReliableConfidence = deltaSegs.some(seg => Number.isFinite(seg.confidence) && seg.confidence > 0.05);
+    const cleanedLines: string[] = [];
+    let lastLineKey = '';
+    for (const seg of deltaSegs) {
+      const line = sanitizeVoiceInterviewLine(seg.text);
+      if (isVoiceNoiseLine(line, seg.confidence, hasReliableConfidence)) continue;
+      const key = voiceLineKey(line);
+      if (!key || key === lastLineKey) continue;
+      lastLineKey = key;
+      cleanedLines.push(line);
+    }
+    if (cleanedLines.length === 0) return;
+    appendVoiceInterviewBuffer(cleanedLines.join('\n'));
+    if (voiceInterviewPendingContext.length < INTERVIEW_MIN_DELTA_CHARS) return;
+    const extracted = extractVoiceInterviewQuestion(voiceInterviewPendingContext);
+    if (!extracted) return;
+    const questionKey = voiceQuestionSignature(extracted.focus);
+    if (questionKey && questionKey === voiceInterviewLastQuestionKey) { voiceInterviewPendingContext = ''; return; }
+    voiceInterviewLastQuestionKey = questionKey;
+    const rowId = crypto.randomUUID();
+    const pendingSnapshot = voiceInterviewPendingContext;
+    voiceInterviewPendingContext = '';
+    voiceInterviewRows = [
+      ...voiceInterviewRows,
+      { id: rowId, side: 'right', text: $t('transcription.interviewAnswerPending'), timestamp: Date.now(), status: 'pending' },
+    ];
+    voiceInterviewBusy = true;
+    try {
+      const answer = await requestVoiceInterviewAnswer(extracted.focus, extracted.support);
+      voiceInterviewRows = voiceInterviewRows.map(row =>
+        row.id === rowId && row.side === 'right' ? { ...row, text: answer, status: 'done' as const } : row,
+      );
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : $t('transcription.interviewAnswerFailed');
+      voiceInterviewPendingContext = pendingSnapshot.length > INTERVIEW_MAX_BUFFER_CHARS
+        ? pendingSnapshot.slice(-INTERVIEW_MAX_BUFFER_CHARS) : pendingSnapshot;
+      voiceInterviewRows = voiceInterviewRows.map(row =>
+        row.id === rowId && row.side === 'right' ? { ...row, text: msg, status: 'failed' as const } : row,
+      );
+    } finally {
+      voiceInterviewBusy = false;
+    }
+  }
+
+  // ── Voice mode recording functions ─────────────────────────────────────────
+
+  async function startVoiceRecording() {
+    if (!speechConfig) {
+      aiStore.setError($t('transcription.noSpeechConfig'));
+      return;
+    }
+    voiceRecordingState = 'connecting';
+    voiceError = null;
+    voiceSegments = [];
+    voiceInterviewRows = [];
+    voiceSpeakerColorMap.clear();
+    resetVoiceInterviewContext(false);
+
+    try {
+      const sid = await startTranscription(
+        speechConfig,
+        voiceProfiles,
+        (seg: TranscriptSegment) => {
+          // Same merge logic as TranscriptionPanel
+          if (voiceSegments.length > 0) {
+            const last = voiceSegments[voiceSegments.length - 1];
+            if (!last.isFinal && last.speakerId === seg.speakerId) {
+              voiceSegments = [...voiceSegments.slice(0, -1), seg];
+            } else {
+              voiceSegments = [...voiceSegments, seg];
+            }
+          } else {
+            voiceSegments = [...voiceSegments, seg];
+          }
+          // Interview mode: add final segments as left rows and schedule AI answer
+          if (voiceSessionMode === 'interview' && seg.isFinal) {
+            voiceInterviewRows = [
+              ...voiceInterviewRows,
+              { id: crypto.randomUUID(), side: 'left', speaker: seg.displayName, text: seg.text, timestamp: Date.now() },
+            ];
+            scheduleVoiceInterviewAnswer();
+          }
+        },
+        (msg: string) => {
+          voiceError = msg;
+          voiceSessionId = null;
+          voiceRecordingState = 'idle';
+          stopVoiceTimer();
+          clearVoiceSilenceTimer();
+        },
+        { sourceMode: voiceSourceMode },
+      );
+      if (voiceRecordingState !== 'connecting') return;
+      voiceSessionId = sid;
+      voiceRecordingState = 'recording';
+      voiceElapsedMs = 0;
+      voiceStartTime = Date.now();
+      startVoiceTimer();
+      startVizAnalyser();
+    } catch (e: unknown) {
+      voiceError = e instanceof Error ? e.message : String(e);
+      voiceRecordingState = 'idle';
+      clearVoiceSilenceTimer();
+    }
+  }
+
+  async function stopVoiceRecording() {
+    if (!voiceSessionId) return;
+    const sid = voiceSessionId;
+    voiceSessionId = null;
+    voiceRecordingState = 'idle';
+    stopVoiceTimer();
+    stopVizAnalyser();
+    clearVoiceSilenceTimer();
+    await stopTranscription(sid).catch(() => {});
+    // In interview mode, trigger a final answer for any buffered context
+    if (voiceSessionMode === 'interview' && !voiceInterviewBusy) {
+      triggerVoiceInterviewAnswer().catch(() => {});
+    }
+  }
+
+  function startVoiceTimer() {
+    voiceTimerRef = setInterval(() => {
+      voiceElapsedMs = Date.now() - voiceStartTime;
+    }, 1000);
+  }
+
+  function stopVoiceTimer() {
+    if (voiceTimerRef) { clearInterval(voiceTimerRef); voiceTimerRef = null; }
+  }
+
+  async function toggleVoiceRecording() {
+    if (voiceRecordingState === 'idle') {
+      await startVoiceRecording();
+    } else if (voiceRecordingState === 'recording') {
+      await stopVoiceRecording();
+    }
+  }
+
+  async function handleVoiceSourceChange(e: Event) {
+    const val = (e.target as HTMLSelectElement).value as VoiceSourceMode;
+    voiceSourceMode = val;
+    if (voiceRecordingState === 'recording') {
+      await stopVoiceRecording();
+      await startVoiceRecording();
+    }
+  }
+
+  function exitVoiceMode() {
+    stopVoiceRecording();
+    clearVoiceSilenceTimer();
+    showTranscription = false;
+    voiceError = null;
+    voiceElapsedMs = 0;
+    voiceSegments = [];
+    voiceInterviewRows = [];
+    voiceInterviewBusy = false;
+    voiceInterviewCursor = 0;
+    voiceInterviewPendingContext = '';
+    voiceInterviewLastQuestionKey = '';
+    voiceSpeakerColorMap.clear();
+  }
+
+  async function handleVoiceSessionModeChange(e: Event) {
+    const next = (e.target as HTMLSelectElement).value as VoiceSessionMode;
+    if (next === voiceSessionMode) return;
+    voiceSessionMode = next;
+    if (next === 'interview') {
+      resetVoiceInterviewContext(true);
+    } else {
+      clearVoiceSilenceTimer();
+    }
+  }
+
+  function formatVoiceElapsed(ms: number): string {
+    const s = Math.floor(ms / 1000);
+    const m = Math.floor(s / 60);
+    return `${m}:${String(s % 60).padStart(2, '0')}`;
+  }
+
   /** Send a finished transcript to the LLM as a user message. */
   async function handleTranscriptionToAI(transcript: string) {
     showTranscription = false;
@@ -1233,6 +1579,51 @@
     {/if}
   </div>
 
+  {#if showTranscription}
+    <div class="voice-mode-bar">
+      <div class="voice-mode-bar-controls">
+        <label class="voice-top-field">
+          <span class="voice-top-label">{$t('transcription.sourceLabel')}</span>
+          <select
+            class="voice-top-select"
+            value={voiceSourceMode}
+            onchange={handleVoiceSourceChange}
+            disabled={voiceRecordingState === 'connecting'}
+          >
+            <option value="mic">{$t('transcription.sourceMic')}</option>
+            <option value="system">{$t('transcription.sourceSystem')}</option>
+            <option value="mixed">{$t('transcription.sourceMixed')}</option>
+          </select>
+        </label>
+        <label class="voice-top-field">
+          <span class="voice-top-label">{$t('transcription.modeLabel')}</span>
+          <select
+            class="voice-top-select"
+            value={voiceSessionMode}
+            onchange={handleVoiceSessionModeChange}
+            disabled={voiceRecordingState === 'connecting'}
+          >
+            <option value="transcription">{$t('transcription.modeTranscription')}</option>
+            <option value="interview">{$t('transcription.modeInterview')}</option>
+          </select>
+        </label>
+      </div>
+      <div class="voice-mode-bar-right">
+        {#if voiceRecordingState === 'recording'}
+          <span class="voice-rec-dot"></span>
+          <span class="voice-elapsed">{formatVoiceElapsed(voiceElapsedMs)}</span>
+        {:else if voiceRecordingState === 'connecting'}
+          <span class="voice-elapsed muted">{$t('transcription.connecting')}</span>
+        {/if}
+        <button class="ctrl-btn icon voice-back-btn" onclick={exitVoiceMode} title={$t('transcription.back')}>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
+            <path d="M10 6H2M5 3L2 6l3 3" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  {/if}
+
   {#if !isConfigured}
     <div class="ai-unconfigured">
       <p>{$t('ai.unconfigured')}</p>
@@ -1242,16 +1633,8 @@
       {/if}
     </div>
   {:else}
-    {#if showTranscription}
-      <TranscriptionPanel
-        onSendToAI={handleTranscriptionToAI}
-        onBack={() => showTranscription = false}
-        {onInsert}
-        onOpenSettings={onOpenVoiceSettings}
-      />
-    {:else}
     <div class="ai-messages" bind:this={messagesEl} onscroll={handleMessagesScroll}>
-      {#if chatMessages.length === 0 && !isLoading && !showCommands && !isRealtimeVoiceActive && !isRealtimeVoiceConnecting}
+      {#if chatMessages.length === 0 && !isLoading && !showCommands && !isRealtimeVoiceActive && !isRealtimeVoiceConnecting && !showTranscription}
         <TemplateGallery onSelectTemplate={handleTemplateSelect} />
       {/if}
 
@@ -1334,6 +1717,50 @@
           <div class="message-content">{rtUserInterim}</div>
         </div>
       {/if}
+
+      {#if showTranscription}
+        {#if voiceSessionMode === 'transcription'}
+          <!-- Transcription mode: speaker-labeled segments in chat area -->
+          {#if voiceSegments.length === 0 && voiceRecordingState !== 'idle'}
+            <div class="voice-area-empty">{$t('transcription.emptyWaiting')}</div>
+          {/if}
+          {#each voiceSegments as seg, i (i)}
+            <div class="voice-segment" class:voice-interim={!seg.isFinal}>
+              <div class="voice-segment-header">
+                <span class="voice-speaker-dot" style="background: {getVoiceSpeakerColor(seg.displayName)}"></span>
+                <span class="voice-speaker-name">{seg.displayName}</span>
+                <span class="voice-segment-time">{formatVoiceSegmentTime(seg.startMs)}</span>
+              </div>
+              <p class="voice-segment-text">{seg.text}</p>
+            </div>
+          {/each}
+        {:else}
+          <!-- Interview mode: Q&A layout -->
+          {#if voiceInterviewRows.length === 0 && voiceRecordingState !== 'idle'}
+            <div class="voice-area-empty">{$t('transcription.emptyWaiting')}</div>
+          {/if}
+          {#each voiceInterviewRows as row (row.id)}
+            {#if row.side === 'left'}
+              <div class="voice-segment voice-interview-q">
+                <div class="voice-segment-header">
+                  <span class="voice-speaker-dot" style="background: {getVoiceSpeakerColor(row.speaker)}"></span>
+                  <span class="voice-speaker-name">{row.speaker}</span>
+                </div>
+                <p class="voice-segment-text">{row.text}</p>
+              </div>
+            {:else}
+              <div class="voice-interview-a" class:failed={row.status === 'failed'} class:pending={row.status === 'pending'}>
+                <div class="voice-interview-a-label">AI</div>
+                <p class="voice-interview-a-text">{row.text}</p>
+              </div>
+            {/if}
+          {/each}
+        {/if}
+        {#if voiceError}
+          <div class="voice-error-banner">{voiceError}</div>
+        {/if}
+      {/if}
+
       {#if isRealtimeVoiceActive && rtCurrentResponse}
         <div class="message assistant streaming">
           <div class="message-header">
@@ -1433,7 +1860,7 @@
         </div>
       {/if}
 
-      <div class="input-shell">
+      <div class="input-shell" class:voice-mode={showTranscription}>
         {#if pendingImages.length > 0}
           <div class="image-preview-strip">
             {#each pendingImages as img (img.id)}
@@ -1468,7 +1895,7 @@
         </div>
 
         <div class="input-action-row" class:recording={inlineRecordingState === 'recording'}>
-          <div class="input-action-left" class:hidden={inlineRecordingState === 'recording'}>
+          <div class="input-action-left" class:hidden={inlineRecordingState === 'recording' || showTranscription}>
             {#if !isRealtimeVoiceActive}
               <button
                 class="icon-btn plus-btn"
@@ -1493,8 +1920,49 @@
             </button>
           </div>
 
-          <div class="input-action-right" class:recording-fullrow={inlineRecordingState === 'recording'}>
-            {#if isLoading}
+          <div
+            class="input-action-right"
+            class:recording-fullrow={inlineRecordingState === 'recording' || (showTranscription && voiceRecordingState === 'recording')}
+          >
+            {#if showTranscription}
+              {#if voiceRecordingState === 'recording'}
+                <div class="inline-wave-bars voice-wave-bars" aria-hidden="true">
+                  {#each vizHistory as v}
+                    {@const active = v >= 0.04}
+                    <div
+                      class="freq-slot"
+                      class:freq-slot--active={active}
+                      style="height:{Math.max(3, v * 42)}px; border-radius:{active ? '1px' : '50%'}"
+                    ></div>
+                  {/each}
+                </div>
+              {/if}
+              <button
+                class="icon-btn voice-record-btn"
+                class:primary-btn={voiceRecordingState === 'recording'}
+                class:ghost-btn={voiceRecordingState !== 'recording'}
+                onclick={toggleVoiceRecording}
+                disabled={voiceRecordingState === 'connecting' || voiceRecordingState === 'stopping' || !speechConfig}
+                title={voiceRecordingState === 'recording' ? $t('transcription.stop') : $t('transcription.start')}
+              >
+                {#if voiceRecordingState === 'connecting' || voiceRecordingState === 'stopping'}
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                  </svg>
+                {:else if voiceRecordingState === 'recording'}
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <rect x="6" y="6" width="12" height="12" rx="2" stroke="currentColor" stroke-width="2"/>
+                  </svg>
+                {:else}
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <rect x="9" y="3" width="6" height="12" rx="3" stroke="currentColor" stroke-width="2"/>
+                    <path d="M6 11a6 6 0 0 0 12 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    <path d="M12 17v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    <path d="M8 21h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                  </svg>
+                {/if}
+              </button>
+            {:else if isLoading}
               <button class="icon-btn primary-btn stop-btn" onclick={abortAIRequest} title={$t('ai.stop')}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                   <rect x="6" y="6" width="12" height="12" rx="2" stroke="currentColor" stroke-width="2"/>
@@ -1575,7 +2043,6 @@
         </div>
       </div>
     </div>
-    {/if}
   {/if}
 
   {#if lightboxSrc}
@@ -2393,6 +2860,11 @@
     display: none;
   }
 
+  /* When left side is hidden (voice mode), push right side to the end */
+  .input-action-left.hidden + .input-action-right {
+    margin-left: auto;
+  }
+
   .input-action-right.recording-fullrow {
     flex: 1;
     gap: 0.3rem;
@@ -2703,5 +3175,235 @@
 
   :global([dir="rtl"]) .drawer-item {
     text-align: right;
+  }
+
+  /* ── Voice mode bar ───────────────────────────────────────────────── */
+  .voice-mode-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.35rem 0.75rem;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+  }
+
+  .voice-mode-bar-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+
+  .voice-top-field {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .voice-top-label {
+    font-size: var(--font-size-xs);
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+
+  .voice-top-select {
+    font-size: var(--font-size-xs);
+    padding: 0.1rem 0.25rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    cursor: pointer;
+  }
+
+  .voice-mode-bar-right {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-shrink: 0;
+  }
+
+  .voice-rec-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #e53e3e;
+    animation: voice-blink 1s ease-in-out infinite;
+  }
+
+  @keyframes voice-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  .voice-elapsed {
+    font-size: var(--font-size-xs);
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .voice-elapsed.muted {
+    opacity: 0.6;
+  }
+
+  .voice-back-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--bg-primary);
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+
+  .voice-back-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+
+  .voice-record-btn.primary-btn {
+    background: #e53e3e;
+    border-color: #e53e3e;
+    color: white;
+  }
+
+  .voice-record-btn.primary-btn:hover:not(:disabled) {
+    background: color-mix(in srgb, #e53e3e 82%, black);
+    color: white;
+    opacity: 1;
+  }
+
+  /* ── Voice transcription segments ───────────────────────────────── */
+  .voice-area-empty {
+    padding: 1.5rem 1rem;
+    font-size: var(--font-size-sm);
+    color: var(--text-muted);
+    text-align: center;
+  }
+
+  .voice-segment {
+    padding: 0.4rem 0.75rem 0.5rem;
+    border-left: 2px solid var(--border-light);
+    margin: 0.2rem 0;
+    transition: border-color 0.2s;
+  }
+
+  .voice-segment.voice-interim {
+    opacity: 0.6;
+    font-style: italic;
+  }
+
+  .voice-segment-header {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-bottom: 0.2rem;
+  }
+
+  .voice-speaker-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .voice-speaker-name {
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    color: var(--text-secondary);
+  }
+
+  .voice-segment-time {
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-left: auto;
+  }
+
+  .voice-segment-text {
+    margin: 0;
+    font-size: var(--font-size-sm);
+    color: var(--text-primary);
+    line-height: 1.45;
+    word-break: break-word;
+  }
+
+  /* Interview Q left indent */
+  .voice-interview-q {
+    border-left-color: var(--accent-color);
+  }
+
+  /* Interview AI answer bubble */
+  .voice-interview-a {
+    margin: 0.3rem 0.75rem 0.3rem 1.5rem;
+    padding: 0.5rem 0.65rem;
+    background: color-mix(in srgb, var(--accent-color) 8%, var(--bg-secondary));
+    border: 1px solid color-mix(in srgb, var(--accent-color) 20%, var(--border-light));
+    border-radius: 8px;
+  }
+
+  .voice-interview-a.failed {
+    background: color-mix(in srgb, #e53e3e 6%, var(--bg-secondary));
+    border-color: color-mix(in srgb, #e53e3e 25%, var(--border-light));
+  }
+
+  .voice-interview-a.pending {
+    opacity: 0.7;
+  }
+
+  .voice-interview-a-label {
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    color: var(--accent-color);
+    margin-bottom: 0.25rem;
+  }
+
+  .voice-interview-a.failed .voice-interview-a-label {
+    color: #e53e3e;
+  }
+
+  .voice-interview-a-text {
+    margin: 0;
+    font-size: var(--font-size-sm);
+    color: var(--text-primary);
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .voice-error-banner {
+    margin: 0.4rem 0.75rem;
+    padding: 0.4rem 0.6rem;
+    background: color-mix(in srgb, #e53e3e 8%, var(--bg-secondary));
+    border: 1px solid color-mix(in srgb, #e53e3e 25%, var(--border-light));
+    border-radius: 6px;
+    font-size: var(--font-size-xs);
+    color: #e53e3e;
+  }
+
+  /* ── Voice mode input-shell theme ────────────────────────────────── */
+  .input-shell.voice-mode {
+    border-color: color-mix(in srgb, #e53e3e 40%, var(--border-color));
+    background: color-mix(in srgb, #e53e3e 4%, var(--bg-primary));
+  }
+
+  .input-shell.voice-mode:focus-within {
+    border-color: color-mix(in srgb, #e53e3e 70%, var(--border-color));
+  }
+
+  .input-shell.voice-mode .ai-input::placeholder {
+    color: color-mix(in srgb, #e53e3e 30%, var(--text-muted));
+  }
+
+  /* Voice wave bars use red accent instead of --accent-color */
+  .voice-wave-bars .freq-slot--active {
+    background: linear-gradient(to top, #e53e3e, color-mix(in srgb, #e53e3e 60%, white));
+    box-shadow: 0 0 3px color-mix(in srgb, #e53e3e 60%, transparent),
+                0 0 7px color-mix(in srgb, #e53e3e 30%, transparent);
   }
 </style>

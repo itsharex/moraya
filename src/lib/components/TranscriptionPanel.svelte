@@ -548,14 +548,14 @@
   function saveNewProfiles(proposals: NewProfileProposal[]) {
     if (!proposals.length) return;
     const existing = $settingsStore.voiceProfiles ?? [];
-
-    // Update existing profiles when a longer voice sample is available (up to 30 s cap).
-    // Replace samplePath only when: new speaking time > current stored duration AND
-    // current stored duration < 30 000 ms (once we have 30 s we stop updating).
     const MAX_SAMPLE_MS = 30_000;
     let changed = false;
+
+    // Update existing profiles: match by speakerId first, then by autoName.
+    // This also handles cross-session dedup for gendered names via speakerId.
     const updated: VoiceProfile[] = existing.map(p => {
-      const match = proposals.find(pr => pr.autoName === p.autoName);
+      const match = proposals.find(pr => pr.speakerId === p.speakerId)
+        ?? proposals.find(pr => pr.autoName === p.autoName);
       if (
         match?.samplePath &&
         match.sampleDurationMs > p.sampleDurationMs &&
@@ -572,22 +572,50 @@
       return p;
     });
 
-    // Add brand-new profiles for speakers not yet in the list.
-    // Gendered names are stable across sessions → dedup by autoName.
-    // Fallback names (Speaker N / 说话人N) can't be matched across sessions → always create new.
+    // Determine the current max N used by fallback Speaker profiles so new ones
+    // get a unique sequential number (e.g. the 3rd session yields "Speaker 3").
     const speakerPrefixes = resolveAllLocales('settings.voice.naming.speaker', { n: '' }).map(s => s.trim());
+    let maxFallbackN = 0;
+    for (const p of updated) {
+      if (speakerPrefixes.some(prefix => p.autoName.startsWith(prefix))) {
+        const m = p.autoName.match(/(\d+)\s*$/);
+        if (m) maxFallbackN = Math.max(maxFallbackN, parseInt(m[1], 10));
+      }
+    }
+
     const existingNames = new Set(updated.map((p: VoiceProfile) => p.autoName));
+    // Dedup by speakerId: skip proposals whose speakerId is already stored.
+    const existingSpeakerIds = new Set(updated.map(p => p.speakerId).filter(Boolean));
+
     const newProfiles: VoiceProfile[] = [];
     let colorIdx = updated.length;
     for (const proposal of proposals) {
+      // Skip if this physical speaker is already in the list (cross-session dedup).
+      if (proposal.speakerId && existingSpeakerIds.has(proposal.speakerId)) continue;
+
       const isFallback = speakerPrefixes.some(prefix => proposal.autoName.startsWith(prefix));
       if (!isFallback && existingNames.has(proposal.autoName)) continue;
+
+      // For fallback (Speaker N) profiles: assign the next unique sequential number
+      // instead of reusing the service-generated "Speaker 1" every session.
+      let profileAutoName = proposal.autoName;
+      if (isFallback) {
+        maxFallbackN++;
+        profileAutoName = $t('settings.voice.naming.speaker', { n: String(maxFallbackN) });
+        while (existingNames.has(profileAutoName)) {
+          maxFallbackN++;
+          profileAutoName = $t('settings.voice.naming.speaker', { n: String(maxFallbackN) });
+        }
+      }
+
+      existingNames.add(profileAutoName);
+      existingSpeakerIds.add(proposal.speakerId);
       const color = PROFILE_COLORS[colorIdx % PROFILE_COLORS.length];
       colorIdx++;
       newProfiles.push({
         id: crypto.randomUUID(),
         speakerId: proposal.speakerId,
-        autoName: proposal.autoName,
+        autoName: profileAutoName,
         nickname: '',
         gender: proposal.gender,
         samplePath: proposal.samplePath,
