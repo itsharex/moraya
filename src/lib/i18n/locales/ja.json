@@ -128,7 +128,8 @@
         "female": "女性{n}",
         "bystander": "傍観者{n}",
         "speaker": "話者{n}"
-      }
+      },
+      "providersHint": "音声文字起こし用のスピーチプロバイダーを設定。"
     }
   },
   "titlebar": {
@@ -338,6 +339,10 @@
       "continuationPhrases": "まず|次に|続いて|それから",
       "remainingPhrases": "残り|次の|ステップ\\d+",
       "unfinishedPhrases": "まだ|未完了|保留中|次のステップ|TODO"
+    },
+    "sections": {
+      "imageAI": "画像 AI",
+      "imageAIHint": "AI 画像生成モデルの設定。"
     }
   },
   "mcp": {

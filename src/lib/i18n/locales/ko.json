@@ -128,7 +128,8 @@
         "female": "여성{n}",
         "bystander": "방관자{n}",
         "speaker": "화자{n}"
-      }
+      },
+      "providersHint": "음성 전사를 위한 음성 제공자 구성."
     }
   },
   "titlebar": {
@@ -338,6 +339,10 @@
       "continuationPhrases": "먼저|다음으로|그런 다음|이제",
       "remainingPhrases": "남은|다음|단계\\d+",
       "unfinishedPhrases": "아직|미완료|보류 중|해야 할|다음 단계"
+    },
+    "sections": {
+      "imageAI": "이미지 AI",
+      "imageAIHint": "AI 이미지 생성 모델 구성."
     }
   },
   "mcp": {

@@ -128,7 +128,8 @@
         "female": "أنثى {n}",
         "bystander": "متفرج {n}",
         "speaker": "متحدث {n}"
-      }
+      },
+      "providersHint": "تكوين موفري الكلام لنسخ الصوت."
     }
   },
   "titlebar": {
@@ -338,6 +339,10 @@
       "continuationPhrases": "أولاً|بعد ذلك|ثم|الآن",
       "remainingPhrases": "المتبقي|التالي|الخطوة \\d+",
       "unfinishedPhrases": "للقيام|TODO|الخطوة التالية|لم يتم بعد|معلق"
+    },
+    "sections": {
+      "imageAI": "ذكاء اصطناعي للصور",
+      "imageAIHint": "تكوينات نموذج إنشاء الصور بالذكاء الاصطناعي."
     }
   },
   "mcp": {

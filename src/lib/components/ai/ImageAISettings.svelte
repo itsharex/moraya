@@ -144,6 +144,13 @@
 </script>
 
 <div class="image-ai-settings">
+  <div class="section-header">
+    <div>
+      <h3 class="section-title">{$t('ai.sections.imageAI')}</h3>
+      <p class="section-subtitle">{$t('ai.sections.imageAIHint')}</p>
+    </div>
+  </div>
+
   {#if imageConfigs.length === 0 && !addingImage}
     <div class="empty-state">
       <p>{$t('ai.multiModel.noImageModels')}</p>

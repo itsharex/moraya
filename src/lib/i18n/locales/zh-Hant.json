@@ -128,7 +128,8 @@
         "female": "女{n}號",
         "bystander": "路人{n}",
         "speaker": "說話人{n}"
-      }
+      },
+      "providersHint": "設定語音轉譯服務商。"
     }
   },
   "titlebar": {
@@ -338,6 +339,10 @@
       "continuationPhrases": "接下來|下面|現在|然後|讓我|繼續|處理|開始|上傳|傳送|呼叫|查看|取得|擷取",
       "remainingPhrases": "還有|剩餘|接下來|下一|第\\d+[張個步]",
       "unfinishedPhrases": "還需要|還沒有|尚未|待處理"
+    },
+    "sections": {
+      "imageAI": "圖像 AI",
+      "imageAIHint": "AI 圖像生成模型配置。"
     }
   },
   "mcp": {

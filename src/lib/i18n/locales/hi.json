@@ -128,7 +128,8 @@
         "female": "महिला {n}",
         "bystander": "दर्शक {n}",
         "speaker": "वक्ता {n}"
-      }
+      },
+      "providersHint": "वॉइस ट्रांसक्रिप्शन के लिए स्पीच प्रोवाइडर कॉन्फ़िगर करें।"
     }
   },
   "titlebar": {
@@ -338,6 +339,10 @@
       "continuationPhrases": "पहले|अगला|फिर|अब",
       "remainingPhrases": "शेष|अगला|चरण \\d+",
       "unfinishedPhrases": "करना है|TODO|अगला चरण|अभी तक नहीं|लंबित"
+    },
+    "sections": {
+      "imageAI": "छवि AI",
+      "imageAIHint": "AI छवि निर्माण मॉडल कॉन्फ़िगरेशन।"
     }
   },
   "mcp": {

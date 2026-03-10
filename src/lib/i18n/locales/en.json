@@ -128,7 +128,8 @@
         "female": "Female {n}",
         "bystander": "Passerby{n}",
         "speaker": "Speaker {n}"
-      }
+      },
+      "providersHint": "Configure speech providers for voice transcription."
     }
   },
   "titlebar": {
@@ -260,7 +261,9 @@
       "sessionAI": "Session AI",
       "sessionAIHint": "Text chat model configurations.",
       "realtimeVoiceAI": "End-to-End Voice AI",
-      "realtimeVoiceAIHint": "Realtime voice conversation configurations (multiple providers)."
+      "realtimeVoiceAIHint": "Realtime voice conversation configurations (multiple providers).",
+      "imageAI": "Image AI",
+      "imageAIHint": "AI image generation model configurations."
     },
     "realtime": {
       "chatModelGroup": "Chat Models",

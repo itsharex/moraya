@@ -124,7 +124,8 @@
         "female": "Femme {n}",
         "bystander": "Spectateur {n}",
         "speaker": "Locuteur {n}"
-      }
+      },
+      "providersHint": "Configurer les fournisseurs de parole pour la transcription."
     }
   },
   "titlebar": {
@@ -334,6 +335,10 @@
       "continuationPhrases": "D'abord|Ensuite|Puis|Maintenant",
       "remainingPhrases": "restant|suivant|étape \\d+",
       "unfinishedPhrases": "à faire|TODO|prochaine étape|pas encore|en attente"
+    },
+    "sections": {
+      "imageAI": "IA image",
+      "imageAIHint": "Configurations du modèle de génération d'images IA."
     }
   },
   "mcp": {

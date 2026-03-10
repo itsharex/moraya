@@ -320,8 +320,10 @@
   <!-- ── Speech Provider Section ─────────────────────────────────────────── -->
   <section class="settings-section">
     <div class="section-header">
-      <h3 class="section-title">{$t('settings.voice.providers')}</h3>
-      <button class="add-btn" onclick={startAdd}>+ {$t('settings.voice.addProvider')}</button>
+      <div>
+        <h3 class="section-title">{$t('settings.voice.providers')}</h3>
+        <p class="section-subtitle">{$t('settings.voice.providersHint')}</p>
+      </div>
     </div>
 
     {#if configs.length === 0 && !showAddForm}
@@ -542,6 +544,10 @@
         </div>
       </div>
     {/if}
+
+    {#if !showAddForm && !editingId}
+      <button class="add-model-btn" onclick={startAdd}>+ {$t('settings.voice.addProvider')}</button>
+    {/if}
   </section>
 
   <!-- ── Storage Settings ────────────────────────────────────────────────── -->
@@ -664,6 +670,12 @@
     margin: 0;
     text-transform: uppercase;
     letter-spacing: 0.04em;
+  }
+
+  .section-subtitle {
+    font-size: var(--font-size-xs);
+    color: var(--text-muted);
+    margin: 0.15rem 0 0;
   }
 
   /* Provider card */
@@ -842,6 +854,22 @@
 
   .cancel-btn:hover {
     background: var(--bg-hover);
+  }
+
+  .add-model-btn {
+    padding: 0.35rem;
+    border: 1px dashed var(--border-color);
+    background: transparent;
+    color: var(--text-muted);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: var(--font-size-xs);
+    transition: background-color var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+  }
+
+  .add-model-btn:hover {
+    border-color: var(--accent-color);
+    color: var(--accent-color);
   }
 
   .add-btn {

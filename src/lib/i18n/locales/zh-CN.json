@@ -128,7 +128,8 @@
         "female": "女{n}号",
         "bystander": "路人{n}",
         "speaker": "说话人{n}"
-      }
+      },
+      "providersHint": "配置语音转译服务商。"
     }
   },
   "titlebar": {
@@ -260,7 +261,9 @@
       "sessionAI": "会话 AI",
       "sessionAIHint": "文本对话模型配置。",
       "realtimeVoiceAI": "端到端语音 AI",
-      "realtimeVoiceAIHint": "实时语音对话配置（支持多服务商）。"
+      "realtimeVoiceAIHint": "实时语音对话配置（支持多服务商）。",
+      "imageAI": "图像 AI",
+      "imageAIHint": "AI 图像生成模型配置。"
     },
     "realtime": {
       "chatModelGroup": "对话模型",

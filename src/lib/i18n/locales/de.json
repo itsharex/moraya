@@ -128,7 +128,8 @@
         "female": "Weiblich {n}",
         "bystander": "Zuschauer {n}",
         "speaker": "Sprecher {n}"
-      }
+      },
+      "providersHint": "Sprachanbieter für Sprachtranskription konfigurieren."
     }
   },
   "titlebar": {
@@ -338,6 +339,10 @@
       "continuationPhrases": "Zuerst|Als Nächstes|Dann|Jetzt",
       "remainingPhrases": "verbleibend|nächste|Schritt \\d+",
       "unfinishedPhrases": "noch zu tun|TODO|nächster Schritt|noch nicht|ausstehend"
+    },
+    "sections": {
+      "imageAI": "Bild-KI",
+      "imageAIHint": "Konfigurationen für KI-Bildgenerierungsmodelle."
     }
   },
   "mcp": {
