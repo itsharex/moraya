@@ -525,7 +525,12 @@
   async function uploadAndReplace(imageSrc: string, config: ImageHostConfig, targetPos?: number | null) {
     if (!editor) return;
     try {
-      const blob = await fetchImageAsBlob(imageSrc);
+      // For right-click uploads with a known position, use fetchImageForNode to correctly
+      // handle local relative paths (where imgEl.src is tauri://localhost/... in production).
+      // For auto-upload (paste/drop), targetPos may be null and imageSrc is always a blob: URL.
+      const blob = (targetPos != null)
+        ? await fetchImageForNode()
+        : await fetchImageAsBlob(imageSrc);
       const result = await uploadImage(blob, config);
 
       const view = editor.view;
@@ -738,41 +743,62 @@
     }
   }
 
+  /**
+   * Fetch the image at the current context menu position as a Blob.
+   * Uses the ProseMirror node's raw attrs.src to resolve local relative paths
+   * correctly in production Tauri (where imgEl.src is tauri://localhost/... which
+   * tauriFetch cannot handle). Falls back to imageMenuSrc for blob:/https: URLs.
+   */
+  async function fetchImageForNode(): Promise<Blob> {
+    if (editor && contextMenuTargetPos !== null) {
+      const node = editor.view.state.doc.nodeAt(contextMenuTargetPos);
+      const rawSrc = node?.attrs.src as string | undefined;
+      // Local path (relative or absolute, not a URL scheme)
+      if (rawSrc && !rawSrc.startsWith('blob:') && !rawSrc.startsWith('http') && !rawSrc.startsWith('data:') && !rawSrc.startsWith('tauri:')) {
+        const currentFilePath = editorStore.getState().currentFilePath || '';
+        const dir = currentFilePath ? currentFilePath.split('/').slice(0, -1).join('/') : '';
+        const absPath = !rawSrc.startsWith('/') && dir
+          ? `${dir}/${rawSrc.replace(/^\.\//, '')}`
+          : rawSrc;
+        const blobUrl = await readImageAsBlobUrl(absPath);
+        const res = await fetch(blobUrl);
+        URL.revokeObjectURL(blobUrl);
+        return res.blob();
+      }
+    }
+    return fetchImageAsBlob(imageMenuSrc);
+  }
+
   async function handleImageCopy() {
     try {
-      // Pass a Promise<Blob> to ClipboardItem so clipboard.write() is called
-      // synchronously within the user gesture context. WKWebView requires this —
-      // if we await fetchImageAsBlob first, the gesture expires and write() fails.
-      const pngPromise = fetchImageAsBlob(imageMenuSrc).then(async (blob) => {
-        if (blob.type === 'image/png') return blob;
-        // Convert non-PNG images to PNG via canvas
+      const srcBlob = await fetchImageForNode();
+      // Convert to PNG via canvas (normalizes format and resolves image/png ClipboardItem)
+      const pngBlob = await new Promise<Blob>((resolve, reject) => {
         const img = new Image();
-        const objectUrl = URL.createObjectURL(blob);
-        return new Promise<Blob>((resolve, reject) => {
-          img.onload = () => {
-            const canvas = document.createElement('canvas');
-            canvas.width = img.naturalWidth;
-            canvas.height = img.naturalHeight;
-            const ctx = canvas.getContext('2d')!;
-            ctx.drawImage(img, 0, 0);
-            canvas.toBlob((b) => {
-              URL.revokeObjectURL(objectUrl);
-              if (b) resolve(b);
-              else reject(new Error('Canvas toBlob failed'));
-            }, 'image/png');
-          };
-          img.onerror = () => {
-            URL.revokeObjectURL(objectUrl);
-            reject(new Error('Image load failed'));
-          };
-          img.src = objectUrl;
-        });
+        const objectUrl = URL.createObjectURL(srcBlob);
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+          const ctx = canvas.getContext('2d')!;
+          ctx.drawImage(img, 0, 0);
+          URL.revokeObjectURL(objectUrl);
+          canvas.toBlob((b) => {
+            if (b) resolve(b);
+            else reject(new Error('Canvas toBlob failed'));
+          }, 'image/png');
+        };
+        img.onerror = () => {
+          URL.revokeObjectURL(objectUrl);
+          reject(new Error('Image load failed'));
+        };
+        img.src = objectUrl;
       });
-      await navigator.clipboard.write([
-        new ClipboardItem({ 'image/png': pngPromise }),
-      ]);
+      // Write pre-resolved Blob (not Promise) — WKWebView handles this more reliably
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })]);
     } catch {
-      await navigator.clipboard.writeText(imageMenuSrc);
+      // Last resort: copy the URL as text
+      await navigator.clipboard.writeText(imageMenuSrc).catch(() => {});
     }
   }
 
@@ -783,14 +809,18 @@
   }
 
   async function handleImageSaveAs() {
+    // Show the save dialog FIRST so it always appears regardless of fetch outcome
+    const ext = getImageExtension(imageMenuSrc, '');
+    const path = await saveDialog({
+      defaultPath: `image.${ext}`,
+      filters: [{ name: 'Image', extensions: [ext, 'png', 'jpg', 'webp'].filter((v, i, a) => a.indexOf(v) === i) }],
+    }).catch(() => null);
+    if (!path || typeof path !== 'string') return;
+
     try {
-      const blob = await fetchImageAsBlob(imageMenuSrc);
-      const ext = getImageExtension(imageMenuSrc, blob.type);
-      const path = await saveDialog({
-        defaultPath: `image.${ext}`,
-        filters: [{ name: 'Image', extensions: [ext] }],
-      });
-      if (!path || typeof path !== 'string') return;
+      const blob = await fetchImageForNode();
+      const actualExt = getImageExtension(imageMenuSrc, blob.type);
+      const finalPath = path.match(/\.\w+$/) ? path : `${path}.${actualExt}`;
 
       const arrayBuffer = await blob.arrayBuffer();
       const bytes = new Uint8Array(arrayBuffer);
@@ -799,9 +829,9 @@
         binary += String.fromCharCode(bytes[i]);
       }
       const base64 = btoa(binary);
-      await invoke('write_file_binary', { path, base64Data: base64 });
-    } catch {
-      // Save failed
+      await invoke('write_file_binary', { path: finalPath, base64Data: base64 });
+    } catch (e) {
+      onNotify?.(e instanceof Error ? e.message : String(e), 'error');
     }
   }
 

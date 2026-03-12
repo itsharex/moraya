@@ -182,7 +182,7 @@ function _load(plugin: RendererPlugin): void {
     if (status === 'ready' || status === 'error') {
       savePersisted(get({ subscribe }).plugins);
     }
-  }).then((result) => {
+  }, plugin.fallbackCdnUrl).then((result) => {
     if (wasCancelled) return;
     if (result.status === 'error') {
       patchPlugin(plugin.id, { status: 'error', error: result.error });

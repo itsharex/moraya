@@ -409,7 +409,10 @@
       "launchConfirmOk": "लॉन्च करें",
       "launchConfirmCancel": "रद्द करें",
       "autoApprove": "MCP लॉन्च ऑटो-अनुमोदित करें",
-      "autoApproveHint": "MCP सर्वर कनेक्ट करते और AI-जनरेटेड सेवाएँ लॉन्च करते समय सुरक्षा पुष्टि छोड़ें। अविश्वसनीय स्रोतों के लिए अनुशंसित नहीं।"
+      "autoApproveHint": "MCP सर्वर कनेक्ट करते और AI-जनरेटेड सेवाएँ लॉन्च करते समय सुरक्षा पुष्टि छोड़ें। अविश्वसनीय स्रोतों के लिए अनुशंसित नहीं।",
+      "errorNameRequired": "सर्वर नाम आवश्यक है",
+      "errorCommandRequired": "कमांड आवश्यक है",
+      "errorUrlRequired": "URL आवश्यक है"
     },
     "publish": {
       "empty": "कोई प्रकाशन लक्ष्य कॉन्फ़िगर नहीं है",
@@ -1331,7 +1334,9 @@
       "confirmUrl": "URL से Plugin इंस्टॉल करें?",
       "author": "लेखक",
       "permissions": "अनुमतियाँ",
-      "noPermissions": "कोई अनुमति नहीं"
+      "noPermissions": "कोई अनुमति नहीं",
+      "fetchingRelease": "रिलीज़ जानकारी प्राप्त की जा रही है...",
+      "downloading": "डाउनलोड हो रहा है..."
     },
     "verified": "सत्यापित",
     "enable": "सक्षम करें",

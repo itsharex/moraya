@@ -409,7 +409,10 @@
       "launchConfirmOk": "실행",
       "launchConfirmCancel": "취소",
       "autoApprove": "MCP 실행 자동 승인",
-      "autoApproveHint": "MCP 서버 연결 및 AI 생성 서비스 실행 시 보안 확인을 건너뜁니다. 신뢰할 수 없는 소스에는 권장하지 않습니다."
+      "autoApproveHint": "MCP 서버 연결 및 AI 생성 서비스 실행 시 보안 확인을 건너뜁니다. 신뢰할 수 없는 소스에는 권장하지 않습니다.",
+      "errorNameRequired": "서버 이름을 입력하세요",
+      "errorCommandRequired": "명령어를 입력하세요",
+      "errorUrlRequired": "URL을 입력하세요"
     },
     "publish": {
       "empty": "구성된 게시 대상이 없습니다",
@@ -1331,7 +1334,9 @@
       "confirmUrl": "URL에서 플러그인을 설치하시겠습니까?",
       "author": "작성자",
       "permissions": "권한",
-      "noPermissions": "권한 없음"
+      "noPermissions": "권한 없음",
+      "fetchingRelease": "릴리스 정보를 가져오는 중...",
+      "downloading": "다운로드 중..."
     },
     "verified": "인증됨",
     "enable": "활성화",

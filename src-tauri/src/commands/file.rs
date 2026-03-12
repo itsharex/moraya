@@ -123,6 +123,16 @@ pub fn read_file(path: String) -> Result<String, String> {
     fs::read_to_string(&safe_path).map_err(sanitize_io_error)
 }
 
+/// Read a binary file and return its contents as a byte array.
+/// Tauri serializes Vec<u8> as a JSON number array, so the frontend receives
+/// a number[] that can be passed directly to `new Uint8Array(result)`.
+/// Used by renderer plugins (e.g. morcad) that need to read binary formats such as DWG.
+#[tauri::command]
+pub fn read_file_binary(path: String) -> Result<Vec<u8>, String> {
+    let safe_path = validate_path(&path)?;
+    fs::read(&safe_path).map_err(sanitize_io_error)
+}
+
 /// Return the embedded privacy policy content.
 /// The file is included at compile time so no runtime path resolution is needed.
 #[tauri::command]

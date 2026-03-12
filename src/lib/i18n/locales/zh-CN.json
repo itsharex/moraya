@@ -461,7 +461,10 @@
       "launchConfirmOk": "确认启动",
       "launchConfirmCancel": "取消",
       "autoApprove": "自动批准 MCP 启动",
-      "autoApproveHint": "连接 MCP 服务器和启动 AI 生成的服务时跳过安全确认。不建议用于不可信来源。"
+      "autoApproveHint": "连接 MCP 服务器和启动 AI 生成的服务时跳过安全确认。不建议用于不可信来源。",
+      "errorNameRequired": "请输入服务名称",
+      "errorCommandRequired": "请输入启动命令",
+      "errorUrlRequired": "请输入服务 URL"
     },
     "publish": {
       "empty": "未配置发布目标",
@@ -1395,7 +1398,9 @@
       "confirmUrl": "从 URL 安装插件？",
       "author": "作者",
       "permissions": "权限",
-      "noPermissions": "无权限"
+      "noPermissions": "无权限",
+      "fetchingRelease": "正在获取发布信息...",
+      "downloading": "下载中..."
     },
     "verified": "已认证",
     "enable": "启用",

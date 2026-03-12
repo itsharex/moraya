@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
   import { t } from '$lib/i18n';
+  import { invoke } from '@tauri-apps/api/core';
   import { openUrl } from '@tauri-apps/plugin-opener';
   import { pluginStore } from '$lib/services/plugin';
   import { rendererManager } from '$lib/services/plugin/renderer-manager';
@@ -17,6 +18,8 @@
   let detailPlugin = $state<PluginMarketData | null>(null);
   let validatingUrl = $state('');
   let urlError = $state('');
+  let urlImporting = $state(false);
+  let urlStatus = $state('');
   let installing = $state<Record<string, boolean>>({});
 
   let storeState = $state({
@@ -142,45 +145,52 @@
 
   async function handleUrlImport(): Promise<void> {
     urlError = '';
-    if (!validatingUrl.trim()) return;
+    urlStatus = '';
+    if (!validatingUrl.trim() || urlImporting) return;
 
     let rawUrl = validatingUrl.trim();
-    if (rawUrl.includes('github.com/') && !rawUrl.includes('raw.githubusercontent.com')) {
+    const isGithubRepo = rawUrl.includes('github.com/') && !rawUrl.includes('raw.githubusercontent.com');
+    if (isGithubRepo) {
       rawUrl = rawUrl.replace('https://github.com/', 'https://raw.githubusercontent.com/') + '/main/plugin.json';
     }
 
-    const result = await pluginStore.validateManifest(rawUrl);
-    if (!result.valid) {
-      urlError = result.errors.join('\n');
-      return;
-    }
-    if (!result.manifest) return;
-
-    const confirmMsg = `${$t('plugins.install.confirmUrl')}\n\n${result.manifest.name} v${result.manifest.version}\n${$t('plugins.install.author')}: ${result.manifest.author}\n${$t('plugins.install.permissions')}: ${result.manifest.permissions.join(', ') || $t('plugins.install.noPermissions')}`;
-    if (!confirm(confirmMsg)) return;
-
-    const repoUrl = validatingUrl.trim().replace(/\/$/, '');
-    const owner_repo = repoUrl.replace('https://github.com/', '');
-    const platform = detectPlatform();
-    const apiUrl = `https://api.github.com/repos/${owner_repo}/releases/latest`;
+    urlImporting = true;
     try {
-      const resp = await fetch(apiUrl, { headers: { Accept: 'application/vnd.github.v3+json' } });
-      if (!resp.ok) throw new Error('GitHub API error');
-      const release = await resp.json();
-      const asset = (release.assets ?? []).find((a: Record<string, string>) => {
-        const name: string = a.name ?? '';
-        if (platform === 'darwin-aarch64') return name.endsWith('macos-arm64.zip');
-        if (platform === 'darwin-x86_64') return name.endsWith('macos-x64.zip');
-        if (platform === 'win32') return name.endsWith('windows.zip');
-        return name.endsWith('linux.zip');
-      });
-      if (!asset) throw new Error($t('plugins.error.platformNotSupported'));
-      const res = await pluginStore.installFromUrl(result.manifest.id, asset.browser_download_url, '');
-      if (!res.ok && res.error) alert(res.error);
-      else validatingUrl = '';
+      urlStatus = $t('plugins.install.fetchingRelease');
+      let result = await pluginStore.validateManifest(rawUrl);
+      // Fallback: try master branch if main branch 404s
+      if (!result.valid && isGithubRepo && result.errors.some(e => e.includes('404'))) {
+        const masterUrl = rawUrl.replace('/main/plugin.json', '/master/plugin.json');
+        const masterResult = await pluginStore.validateManifest(masterUrl);
+        if (masterResult.valid) { result = masterResult; rawUrl = masterUrl; }
+      }
+      if (!result.valid) {
+        urlError = result.errors.join('\n');
+        return;
+      }
+      if (!result.manifest) return;
+
+      const confirmMsg = `${$t('plugins.install.confirmUrl')}\n\n${result.manifest.name} v${result.manifest.version}\n${$t('plugins.install.author')}: ${result.manifest.author}\n${$t('plugins.install.permissions')}: ${result.manifest.permissions.join(', ') || $t('plugins.install.noPermissions')}`;
+      if (!confirm(confirmMsg)) return;
+
+      const ownerRepo = validatingUrl.trim().replace(/\/$/, '').replace('https://github.com/', '');
+      const platform = detectPlatform();
+
+      const downloadUrl = await invoke<string>('plugin_fetch_github_asset', { ownerRepo, platform });
+
+      urlStatus = $t('plugins.install.downloading');
+      const res = await pluginStore.installFromUrl(result.manifest.id, downloadUrl, '');
+      if (!res.ok && res.error) {
+        urlError = res.error;
+      } else {
+        validatingUrl = '';
+        urlStatus = '';
+      }
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      urlError = msg;
+      urlError = e instanceof Error ? e.message : String(e);
+    } finally {
+      urlImporting = false;
+      if (!urlError) urlStatus = '';
     }
   }
 
@@ -382,10 +392,16 @@
             type="text"
             placeholder={$t('plugins.install.urlPlaceholder')}
             bind:value={validatingUrl}
+            disabled={urlImporting}
             onkeydown={(e) => e.key === 'Enter' && handleUrlImport()}
           />
-          <button class="btn-secondary" onclick={handleUrlImport}>{$t('plugins.install.validate')}</button>
+          <button class="btn-secondary" onclick={handleUrlImport} disabled={urlImporting}>
+            {urlImporting ? '…' : $t('plugins.install.validate')}
+          </button>
         </div>
+        {#if urlStatus && !urlError}
+          <div class="url-status">{urlStatus}</div>
+        {/if}
         {#if urlError}
           <div class="url-error">{urlError}</div>
         {/if}
@@ -683,6 +699,7 @@
 
   /* Errors / warnings */
   .process-error, .blacklist-warning, .url-error { font-size: var(--font-size-xs); color: #ef4444; margin-top: 4px; }
+  .url-status { font-size: var(--font-size-xs); color: var(--text-muted); margin-top: 4px; }
   .preset-error { font-size: var(--font-size-xs); color: #ef4444; margin-top: 4px; word-break: break-all; }
   .cache-notice { font-size: var(--font-size-xs); color: var(--text-tertiary); padding: 4px 12px; text-align: right; }
 

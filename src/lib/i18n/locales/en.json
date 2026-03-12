@@ -461,7 +461,10 @@
       "launchConfirmOk": "Launch",
       "launchConfirmCancel": "Cancel",
       "autoApprove": "Auto-approve MCP launch",
-      "autoApproveHint": "Skip security confirmation when connecting MCP servers and launching AI-generated services. Not recommended for untrusted sources."
+      "autoApproveHint": "Skip security confirmation when connecting MCP servers and launching AI-generated services. Not recommended for untrusted sources.",
+      "errorNameRequired": "Server name is required",
+      "errorCommandRequired": "Command is required",
+      "errorUrlRequired": "URL is required"
     },
     "publish": {
       "empty": "No publish targets configured",
@@ -1395,7 +1398,9 @@
       "confirmUrl": "Install plugin from URL?",
       "author": "Author",
       "permissions": "Permissions",
-      "noPermissions": "No permissions"
+      "noPermissions": "No permissions",
+      "fetchingRelease": "Fetching release info...",
+      "downloading": "Downloading..."
     },
     "verified": "Verified",
     "enable": "Enable",

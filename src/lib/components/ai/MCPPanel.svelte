@@ -77,6 +77,8 @@
   let addMode = $state<'form' | 'json'>('form');
   let jsonInput = $state('');
   let jsonError = $state<string | null>(null);
+  let addFormError = $state<string | null>(null);
+  let editFormError = $state<string | null>(null);
 
   // Edit server form
   let editingServerId = $state<string | null>(null);
@@ -164,18 +166,28 @@
   }
 
   function handleAddServer() {
-    if (!newServerName.trim()) return;
+    addFormError = null;
+    if (!newServerName.trim()) {
+      addFormError = $t('mcp.servers.errorNameRequired');
+      return;
+    }
 
     let transport: MCPServerConfig['transport'];
     if (newServerTransport === 'stdio') {
-      if (!newServerCommand.trim()) return;
+      if (!newServerCommand.trim()) {
+        addFormError = $t('mcp.servers.errorCommandRequired');
+        return;
+      }
       const args = newServerArgs.trim() ? newServerArgs.trim().split(/\s+/) : [];
       // Use _newServerEnvRaw (plain variable updated by oninput) as primary source.
       // Use ?? so an intentionally-cleared (empty) textarea is respected.
       const envText = _newServerEnvRaw !== undefined ? _newServerEnvRaw : (newServerEnvEl?.value ?? newServerEnv);
       transport = { type: 'stdio', command: newServerCommand.trim(), args, env: parseEnvString(envText) };
     } else {
-      if (!newServerUrl.trim()) return;
+      if (!newServerUrl.trim()) {
+        addFormError = $t('mcp.servers.errorUrlRequired');
+        return;
+      }
       transport = { type: newServerTransport, url: newServerUrl.trim() };
     }
 
@@ -193,6 +205,7 @@
     newServerArgs = '';
     newServerEnv = '';
     _newServerEnvRaw = undefined;
+    addFormError = null;
     showAddServer = false;
   }
 
@@ -303,21 +316,33 @@
   function cancelEdit() {
     editingServerId = null;
     _editEnvRaw = undefined;
+    editFormError = null;
   }
 
   async function handleSaveEdit() {
-    if (!editingServerId || !editName.trim()) return;
+    editFormError = null;
+    if (!editingServerId) return;
+    if (!editName.trim()) {
+      editFormError = $t('mcp.servers.errorNameRequired');
+      return;
+    }
 
     let transport: MCPServerConfig['transport'];
     if (editTransport === 'stdio') {
-      if (!editCommand.trim()) return;
+      if (!editCommand.trim()) {
+        editFormError = $t('mcp.servers.errorCommandRequired');
+        return;
+      }
       const args = editArgs.trim() ? editArgs.trim().split(/\s+/) : [];
       // Use _editEnvRaw (plain variable updated by oninput) as primary source.
       // Use ?? so an intentionally-cleared (empty) textarea is respected.
       const envText = _editEnvRaw !== undefined ? _editEnvRaw : (editEnvEl?.value ?? editEnv);
       transport = { type: 'stdio', command: editCommand.trim(), args, env: parseEnvString(envText) };
     } else {
-      if (!editUrl.trim()) return;
+      if (!editUrl.trim()) {
+        editFormError = $t('mcp.servers.errorUrlRequired');
+        return;
+      }
       transport = { type: editTransport, url: editUrl.trim() };
     }
 
@@ -341,6 +366,7 @@
 
     editingServerId = null;
     _editEnvRaw = undefined;
+    editFormError = null;
   }
 
   async function handlePublish(targetId: string) {
@@ -664,6 +690,9 @@
                   placeholder={$t('mcp.servers.serverUrl')}
                 />
               {/if}
+              {#if editFormError}
+                <div class="json-error">{editFormError}</div>
+              {/if}
               <div class="form-actions">
                 <button class="btn-sm" onclick={cancelEdit}>{$t('common.cancel')}</button>
                 <button class="btn-sm primary" onclick={handleSaveEdit}>{$t('common.save')}</button>
@@ -767,8 +796,11 @@
                 placeholder={$t('mcp.servers.serverUrl')}
               />
             {/if}
+            {#if addFormError}
+              <div class="json-error">{addFormError}</div>
+            {/if}
             <div class="form-actions">
-              <button class="btn-sm" onclick={() => showAddServer = false}>{$t('common.cancel')}</button>
+              <button class="btn-sm" onclick={() => { showAddServer = false; addFormError = null; }}>{$t('common.cancel')}</button>
               <button class="btn-sm primary" onclick={handleAddServer}>{$t('common.add')}</button>
             </div>
           {/if}

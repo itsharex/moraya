@@ -409,7 +409,10 @@
       "launchConfirmOk": "Iniciar",
       "launchConfirmCancel": "Cancelar",
       "autoApprove": "Aprovar automaticamente o lançamento de MCP",
-      "autoApproveHint": "Pular a confirmação de segurança ao conectar servidores MCP e iniciar serviços gerados pela IA. Não recomendado para fontes não confiáveis."
+      "autoApproveHint": "Pular a confirmação de segurança ao conectar servidores MCP e iniciar serviços gerados pela IA. Não recomendado para fontes não confiáveis.",
+      "errorNameRequired": "O nome do servidor é obrigatório",
+      "errorCommandRequired": "O comando é obrigatório",
+      "errorUrlRequired": "A URL é obrigatória"
     },
     "publish": {
       "empty": "Nenhum alvo de publicação configurado",
@@ -1331,7 +1334,9 @@
       "confirmUrl": "Instalar plugin a partir da URL?",
       "author": "Autor",
       "permissions": "Permissões",
-      "noPermissions": "Sem permissões"
+      "noPermissions": "Sem permissões",
+      "fetchingRelease": "Buscando informações do lançamento...",
+      "downloading": "Baixando..."
     },
     "verified": "Verificado",
     "enable": "Ativar",

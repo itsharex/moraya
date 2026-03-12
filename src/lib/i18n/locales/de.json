@@ -409,7 +409,10 @@
       "launchConfirmOk": "Starten",
       "launchConfirmCancel": "Abbrechen",
       "autoApprove": "MCP-Start automatisch genehmigen",
-      "autoApproveHint": "Sicherheitsbestätigung beim Verbinden von MCP-Servern und Starten KI-generierter Dienste überspringen. Nicht empfohlen für nicht vertrauenswürdige Quellen."
+      "autoApproveHint": "Sicherheitsbestätigung beim Verbinden von MCP-Servern und Starten KI-generierter Dienste überspringen. Nicht empfohlen für nicht vertrauenswürdige Quellen.",
+      "errorNameRequired": "Servername ist erforderlich",
+      "errorCommandRequired": "Befehl ist erforderlich",
+      "errorUrlRequired": "URL ist erforderlich"
     },
     "publish": {
       "empty": "Keine Veröffentlichungsziele konfiguriert",
@@ -1331,7 +1334,9 @@
       "confirmUrl": "Plugin von URL installieren?",
       "author": "Autor",
       "permissions": "Berechtigungen",
-      "noPermissions": "Keine Berechtigungen"
+      "noPermissions": "Keine Berechtigungen",
+      "fetchingRelease": "Versionsinformationen werden abgerufen...",
+      "downloading": "Wird heruntergeladen..."
     },
     "verified": "Verifiziert",
     "enable": "Aktivieren",

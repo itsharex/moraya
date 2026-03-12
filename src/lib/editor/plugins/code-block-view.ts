@@ -459,6 +459,8 @@ export function createCodeBlockNodeView(node: PmNode, view: EditorView, getPos: 
     let rendererEditing = false;
     let lastRendererCode = '';
     let rendererTimer: ReturnType<typeof setTimeout> | null = null;
+    /** Disposable returned by render() (e.g. CadViewerInstance from cad-viewer) */
+    let currentRendererInstance: { dispose(): void } | null = null;
 
     function syncMermaidMode() {
       const showPreview = isMermaid && !isEditing;
@@ -541,8 +543,16 @@ export function createCodeBlockNodeView(node: PmNode, view: EditorView, getPos: 
         if (code.textContent !== source) return;
         if (result.status === 'ready' && result.module) {
           rendererPreview.innerHTML = '';
+          currentRendererInstance?.dispose();
+          currentRendererInstance = null;
           try {
-            await plugin.render(rendererPreview, source, result.module);
+            const docPath = plugin.isFilePathRenderer
+              ? (await import('$lib/stores/editor-store')).editorStore.getState().currentFilePath
+              : null;
+            const instance = await plugin.render(rendererPreview, source, result.module, docPath);
+            if (instance && typeof (instance as { dispose(): void }).dispose === 'function') {
+              currentRendererInstance = instance as { dispose(): void };
+            }
           } catch (e) {
             rendererPreview.innerHTML = `<div class="renderer-error">${escapeText(String(e))}</div>`;
           }
@@ -725,6 +735,8 @@ export function createCodeBlockNodeView(node: PmNode, view: EditorView, getPos: 
         }
         if (renderTimer) clearTimeout(renderTimer);
         if (rendererTimer) clearTimeout(rendererTimer);
+        currentRendererInstance?.dispose();
+        currentRendererInstance = null;
         mermaidReRenderCallbacks.delete(onThemeChange);
         window.removeEventListener('renderer-plugin-ready', onPluginReady);
       },

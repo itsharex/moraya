@@ -14,7 +14,7 @@
 
 ![](https://raw.githubusercontent.com/zouwei/resource/master/images/moraya/20260308-100641.-image.png)
 
-![](https://raw.githubusercontent.com/zouwei/resource/master/images/moraya/20260307-051230.-image.png)
+![](http://taz18p8bf.hn-bkt.clouddn.com/20260312-101551.-image.png)
 
 **[User Manual / Wiki](https://github.com/zouwei/moraya/wiki)**
 

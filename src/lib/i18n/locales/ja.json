@@ -409,7 +409,10 @@
       "launchConfirmOk": "起動",
       "launchConfirmCancel": "キャンセル",
       "autoApprove": "MCP 起動の自動承認",
-      "autoApproveHint": "MCP サーバーの接続や AI 生成サービスの起動時にセキュリティ確認をスキップします。信頼できないソースには推奨しません。"
+      "autoApproveHint": "MCP サーバーの接続や AI 生成サービスの起動時にセキュリティ確認をスキップします。信頼できないソースには推奨しません。",
+      "errorNameRequired": "サーバー名は必須です",
+      "errorCommandRequired": "コマンドは必須です",
+      "errorUrlRequired": "URLは必須です"
     },
     "publish": {
       "empty": "公開ターゲットが設定されていません",
@@ -1331,7 +1334,9 @@
       "confirmUrl": "URL からプラグインをインストールしますか？",
       "author": "作者",
       "permissions": "権限",
-      "noPermissions": "権限なし"
+      "noPermissions": "権限なし",
+      "fetchingRelease": "リリース情報を取得中...",
+      "downloading": "ダウンロード中..."
     },
     "verified": "認証済み",
     "enable": "有効化",

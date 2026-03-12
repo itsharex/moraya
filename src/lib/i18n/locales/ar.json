@@ -409,7 +409,10 @@
       "launchConfirmOk": "تشغيل",
       "launchConfirmCancel": "إلغاء",
       "autoApprove": "الموافقة التلقائية على تشغيل MCP",
-      "autoApproveHint": "تخطي تأكيد الأمان عند الاتصال بخوادم MCP وتشغيل الخدمات المُولَّدة بالـ AI. غير مُوصى به للمصادر غير الموثوقة."
+      "autoApproveHint": "تخطي تأكيد الأمان عند الاتصال بخوادم MCP وتشغيل الخدمات المُولَّدة بالـ AI. غير مُوصى به للمصادر غير الموثوقة.",
+      "errorNameRequired": "اسم الخادم مطلوب",
+      "errorCommandRequired": "الأمر مطلوب",
+      "errorUrlRequired": "عنوان URL مطلوب"
     },
     "publish": {
       "empty": "لم يتم تكوين أهداف النشر",
@@ -1331,7 +1334,9 @@
       "confirmUrl": "تثبيت الإضافة من عنوان URL؟",
       "author": "المؤلف",
       "permissions": "الصلاحيات",
-      "noPermissions": "لا توجد صلاحيات"
+      "noPermissions": "لا توجد صلاحيات",
+      "fetchingRelease": "جارٍ جلب معلومات الإصدار...",
+      "downloading": "جارٍ التنزيل..."
     },
     "verified": "موثق",
     "enable": "تفعيل",

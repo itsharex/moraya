@@ -318,6 +318,7 @@ pub fn run() {
         .manage(DockDocumentTracker(Mutex::new(HashMap::new())))
         .invoke_handler(tauri::generate_handler![
             commands::file::read_file,
+            commands::file::read_file_binary,
             commands::file::read_resource_file,
             commands::file::write_file,
             commands::file::write_file_binary,
@@ -360,6 +361,7 @@ pub fn run() {
             commands::plugin_manager::plugin_invoke,
             commands::plugin_manager::plugin_registry_fetch,
             commands::plugin_manager::plugin_fetch_blacklist,
+            commands::plugin_manager::plugin_fetch_github_asset,
             commands::plugin_manager::download_renderer_plugin,
             commands::plugin_manager::delete_renderer_plugin,
             set_editor_mode_menu,

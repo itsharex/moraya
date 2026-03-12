@@ -409,7 +409,10 @@
       "launchConfirmOk": "確認啟動",
       "launchConfirmCancel": "取消",
       "autoApprove": "自動核准 MCP 啟動",
-      "autoApproveHint": "連線 MCP 伺服器和啟動 AI 產生的服務時跳過安全確認。不建議用於不可信來源。"
+      "autoApproveHint": "連線 MCP 伺服器和啟動 AI 產生的服務時跳過安全確認。不建議用於不可信來源。",
+      "errorNameRequired": "請輸入服務名稱",
+      "errorCommandRequired": "請輸入啟動命令",
+      "errorUrlRequired": "請輸入服務 URL"
     },
     "publish": {
       "empty": "未設定發佈目標",
@@ -1331,7 +1334,9 @@
       "confirmUrl": "從 URL 安裝外掛？",
       "author": "作者",
       "permissions": "權限",
-      "noPermissions": "無權限"
+      "noPermissions": "無權限",
+      "fetchingRelease": "正在獲取發布資訊...",
+      "downloading": "下載中..."
     },
     "verified": "已認證",
     "enable": "啟用",

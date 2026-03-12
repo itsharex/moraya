@@ -451,7 +451,15 @@ pub async fn plugin_validate_manifest(source: String) -> Result<ValidationResult
             .get(&source)
             .send()
             .await
-            .map_err(|_| "无法访问插件仓库".to_string())?;
+            .map_err(|e| {
+                if e.is_timeout() {
+                    "连接超时，请检查网络或稍后重试".to_string()
+                } else if e.is_connect() {
+                    "无法连接到插件仓库，请检查网络连接".to_string()
+                } else {
+                    format!("无法访问插件仓库: {}", e.without_url())
+                }
+            })?;
         if !resp.status().is_success() {
             return Ok(ValidationResult {
                 valid: false,
@@ -1123,6 +1131,65 @@ pub async fn delete_renderer_plugin(app: tauri::AppHandle, plugin_id: String) ->
         std::fs::remove_dir_all(&plugin_dir).map_err(|_| "Failed to delete plugin".to_string())?;
     }
     Ok(())
+}
+
+/// Fetch the browser_download_url for the GitHub release asset matching the given platform.
+/// Called from the frontend URL-import flow (bypasses CSP connect-src restriction).
+#[tauri::command]
+pub async fn plugin_fetch_github_asset(
+    owner_repo: String,
+    platform: String,
+) -> Result<String, String> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .user_agent("Moraya/1.0")
+        .build()
+        .map_err(|_| "HTTP client 初始化失败".to_string())?;
+
+    let url = format!("https://api.github.com/repos/{}/releases/latest", owner_repo);
+    let resp = client
+        .get(&url)
+        .header("Accept", "application/vnd.github.v3+json")
+        .send()
+        .await
+        .map_err(|_| "无法访问 GitHub API".to_string())?;
+
+    if !resp.status().is_success() {
+        return Err(format!("GitHub API 返回 HTTP {}", resp.status().as_u16()));
+    }
+
+    let release: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|_| "解析 GitHub 响应失败".to_string())?;
+
+    let suffix = match platform.as_str() {
+        "darwin-aarch64" => "macos-arm64.zip",
+        "darwin-x86_64"  => "macos-x64.zip",
+        "win32"          => "windows.zip",
+        _                => "linux.zip",
+    };
+
+    let assets = release
+        .get("assets")
+        .and_then(|a| a.as_array())
+        .ok_or_else(|| "发布版本中没有找到资产文件".to_string())?;
+
+    let asset = assets
+        .iter()
+        .find(|a| {
+            a.get("name")
+                .and_then(|n| n.as_str())
+                .map(|n| n.ends_with(suffix))
+                .unwrap_or(false)
+        })
+        .ok_or_else(|| "未找到适用于当前平台的发布包".to_string())?;
+
+    asset
+        .get("browser_download_url")
+        .and_then(|u| u.as_str())
+        .map(|s| s.to_string())
+        .ok_or_else(|| "发布包缺少下载链接".to_string())
 }
 
 /// Fetch blacklist and return IDs that should be force-disabled.

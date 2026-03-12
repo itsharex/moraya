@@ -35,21 +35,37 @@ export interface RendererPlugin {
   /** CDN URL template. Use the frozen version from renderer-versions.json */
   cdnUrl: string;
   /**
+   * Optional fallback CDN URL used when the primary cdnUrl download fails (e.g. package not yet
+   * published to npm). No {version} substitution is applied to this URL.
+   */
+  fallbackCdnUrl?: string;
+  /**
    * English-only hint injected into the AI system prompt when this plugin is
    * enabled.  Tells the AI which code block format to use.
    */
   aiHint: string;
   /**
+   * Optional: when true, the code block source is a file path (not content).
+   * code-block-view.ts passes the current document path as the 4th argument to
+   * render() so the plugin can resolve relative file paths.
+   */
+  isFilePathRenderer?: boolean;
+  /**
    * Render function: given a container element, the raw source string, and the
    * loaded module (UMD global or ESM default), produce visual output.
    * Must be idempotent — container is cleared before each call.
+   *
+   * May return a disposable object; code-block-view.ts will call dispose() when
+   * the NodeView is destroyed (e.g. the user closes or switches files).
    */
   render(
     container: HTMLElement,
     source: string,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    mod: any
-  ): void | Promise<void>;
+    mod: any,
+    /** Current document path — only provided when isFilePathRenderer === true */
+    docPath?: string | null
+  ): void | { dispose(): void } | Promise<void> | Promise<{ dispose(): void }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -543,6 +559,49 @@ export const RENDERER_PLUGINS: RendererPlugin[] = [
       const viz = await vizMod.instance();
       container.innerHTML = '';
       container.appendChild(viz.renderSVGElement(source));
+    },
+  },
+
+  // ---------------------------------------------------------------------------
+  // MorCad — DXF/DWG inline CAD viewer (GPLv3, distributed separately)
+  // ---------------------------------------------------------------------------
+  {
+    id: 'morcad',
+    name: 'Morcad CAD Viewer (DXF/DWG)',
+    description:
+      'Renders AutoCAD DXF/DWG engineering drawings inline using Three.js WebGL. ' +
+      'DWG support loads a ~5 MB GPLv3 WASM module on demand.',
+    stars: 0,
+    npmPackage: '@morcad/moraya',
+    exportName: '',
+    sizeKb: 800,
+    languages: ['morcad', 'dxf', 'dwg'],
+    homepage: 'https://github.com/zouwei/morcad',
+    cdnUrl: 'https://cdn.jsdelivr.net/npm/@morcad/moraya@{version}/dist/index.bundle.js',
+    fallbackCdnUrl: 'https://cdn.jsdelivr.net/gh/zouwei/morcad@v0.2.8/packages/moraya/dist/index.bundle.js',
+    isFilePathRenderer: true,
+    aiHint:
+      'Use ```dxf for DXF files, ```dwg for DWG files, or ```morcad for parameter mode. ' +
+      'Examples:\n```dxf\n./drawings/floor-plan.dxf\n```\n' +
+      '```morcad\nfile: ./drawings/floor-plan.dxf\nlayers: WALLS, DOORS\nheight: 500\n```',
+
+    async render(container, source, mod, docPath) {
+      // docPath may be null for unsaved documents; morcad uses it as a base dir for
+      // resolving relative paths — pass '' so string operations don't throw.
+      const resolvedDocPath = docPath ?? '';
+      const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+      // Note: @tauri-apps/api/core imports inside the morcad bundle are patched at
+      // load time (renderer-loader.ts patchTauriImports), so morcad's own invoke call
+      // works without any additional injection here.
+      const { cadRender } = mod as {
+        cadRender: (
+          c: HTMLElement,
+          s: string,
+          d: string,
+          dark: boolean
+        ) => Promise<{ dispose(): void }>
+      };
+      return cadRender(container, source, resolvedDocPath, isDark);
     },
   },
 ];
