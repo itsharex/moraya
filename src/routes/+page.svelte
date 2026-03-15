@@ -2128,7 +2128,7 @@ ${tr('welcome.tip')}
     onDetachStart={performTabDetachStart} onDetachEnd={performTabDetachEnd}
     onAttachTab={performTabAttach} />
 
-  {#if !isMacOS}
+  {#if false && !isMacOS}
     <TabBar
       onNewTab={() => handleNewFile()}
       onCloseTab={handleCloseTab}

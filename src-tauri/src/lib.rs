@@ -210,21 +210,27 @@ pub(crate) fn create_editor_window(
         let _ = _window.set_title_bar_style(TitleBarStyle::Overlay);
     }
 
-    // Windows/Linux: create a fresh menu for each new window.
-    // Sharing the same Menu object via app.menu() can cause muda's internal
-    // accelerator table to conflict on Windows, freezing the new window's
-    // message loop and making it unresponsive (close button, input all dead).
-    // Each window needs its own Menu instance with independent HMENU handles.
+    // Windows/Linux: defer menu setup so WebView2 can finish initializing first.
+    // Setting the menu synchronously right after build() can block the message loop
+    // while WebView2 is still creating its browser process, causing the new window
+    // to freeze (close button dead, no input). Spawning a thread with a short delay
+    // lets the main thread pump WebView2 initialization messages before we set the menu.
     #[cfg(all(not(target_os = "macos"), not(target_os = "ios")))]
     {
-        if let Ok(win_menu) = menu::create_menu(app) {
-            let _ = _window.set_menu(win_menu);
-        }
         fit_window_to_screen(&_window);
+        let app_clone = app.clone();
+        let win_label = label.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(200));
+            if let Some(win) = app_clone.get_webview_window(&win_label) {
+                if let Ok(win_menu) = menu::create_menu(&app_clone) {
+                    let _ = win.set_menu(win_menu);
+                }
+            }
+        });
     }
 
     // Bring new window to front so the user can see it immediately.
-    // Done AFTER menu/fit so the window is fully configured before gaining focus.
     let _ = _window.set_focus();
 
     Ok(label)
@@ -364,10 +370,17 @@ fn detach_tab_to_window(
 
         #[cfg(all(not(target_os = "macos"), not(target_os = "ios")))]
         {
-            if let Ok(win_menu) = menu::create_menu(&app) {
-                let _ = window.set_menu(win_menu);
-            }
             fit_window_to_screen(&window);
+            let app_clone = app.clone();
+            let win_label = label.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(200));
+                if let Some(win) = app_clone.get_webview_window(&win_label) {
+                    if let Ok(win_menu) = menu::create_menu(&app_clone) {
+                        let _ = win.set_menu(win_menu);
+                    }
+                }
+            });
         }
 
         Ok(label)
