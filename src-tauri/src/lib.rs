@@ -166,52 +166,26 @@ pub(crate) fn create_editor_window(
         pending_map.insert(label.clone(), p.clone());
     }
 
-    // Build window with same config as main.
-    // decorations + title_bar_style are set in the builder to avoid a post-build
-    // toggle that causes WKWebView to cache stale viewport measurements.
-    let url = tauri::WebviewUrl::default();
-    println!("[create_window] step 1: label={}, url={:?}", label, url);
-
-    let mut builder = tauri::WebviewWindowBuilder::new(
+    // ── DIAGNOSTIC: minimal build to isolate WebView2 hang ──
+    // Test A: absolute minimum — no cascade, no size, no devtools.
+    // If this still hangs, the issue is fundamental to runtime WebView2 creation.
+    // If this works, we add options back one by one.
+    println!("[create_window] DIAG-A: minimal build, label={}", label);
+    let _window = tauri::WebviewWindowBuilder::new(
         app,
         &label,
-        url,
+        tauri::WebviewUrl::default(),
     )
     .title(&title)
     .inner_size(1200.0, 800.0)
-    .min_inner_size(600.0, 400.0)
     .decorations(true)
-    .devtools(true); // TEMP: enable devtools for debugging new window freeze
+    .build()
+    .map_err(|e| {
+        println!("[create_window] DIAG-A FAILED: {}", e);
+        format!("Failed to create window: {}", e)
+    })?;
+    println!("[create_window] DIAG-A OK — build() returned!");
 
-    // Cascade new windows: offset from the focused/existing window by 30px.
-    // Falls back to centering if no existing window position is available.
-    let cascade_pos = app
-        .webview_windows()
-        .values()
-        .find_map(|w| w.outer_position().ok())
-        .map(|pos| (pos.x as f64 + 30.0, pos.y as f64 + 30.0));
-    if let Some((x, y)) = cascade_pos {
-        builder = builder.position(x, y);
-    } else {
-        builder = builder.center();
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        use tauri::TitleBarStyle;
-        builder = builder.title_bar_style(TitleBarStyle::Overlay);
-    }
-
-    println!("[create_window] step 1b: calling builder.build()");
-    let _window = builder
-        .build()
-        .map_err(|e| {
-            println!("[create_window] ERROR: build() failed: {}", e);
-            format!("Failed to create window: {}", e)
-        })?;
-    println!("[create_window] step 1c: build() succeeded, webview_url={:?}", _window.url());
-
-    // Runtime fallback: ensure overlay is set even if the builder didn't apply it
     #[cfg(target_os = "macos")]
     {
         use tauri::TitleBarStyle;
@@ -219,19 +193,9 @@ pub(crate) fn create_editor_window(
     }
 
     #[cfg(all(not(target_os = "macos"), not(target_os = "ios")))]
-    {
-        println!("[create_window] step 2: fitting window to screen");
-        fit_window_to_screen(&_window);
-        println!("[create_window] step 3: fit_window_to_screen done");
-        // App-level menu (set in setup) auto-applies to new windows.
-        // Do NOT call window.set_menu() — sharing or duplicating the Menu
-        // object on Windows can interfere with WebView2 initialization.
-    }
+    fit_window_to_screen(&_window);
 
-    println!("[create_window] step 4: calling set_focus");
     let _ = _window.set_focus();
-    println!("[create_window] step 5: done, returning label={}", label);
-
     Ok(label)
 }
 
