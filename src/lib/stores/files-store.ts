@@ -210,6 +210,17 @@ function createFilesStore() {
       return state.knowledgeBases.find(kb => kb.path === path);
     },
 
+    /** Find the knowledge base that contains a given file path (prefix match). */
+    findKnowledgeBaseForFile(filePath: string): KnowledgeBase | undefined {
+      const state = get({ subscribe });
+      const normalized = filePath.replace(/\\/g, '/');
+      return state.knowledgeBases.find(kb => {
+        const kbPath = kb.path.replace(/\\/g, '/');
+        const prefix = kbPath.endsWith('/') ? kbPath : kbPath + '/';
+        return normalized.startsWith(prefix);
+      });
+    },
+
     /** Load persisted preferences from disk. Call once at app startup. */
     async loadPersistedPrefs() {
       try {

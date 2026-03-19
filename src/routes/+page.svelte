@@ -1844,6 +1844,34 @@ ${tr('welcome.tip')}
               });
           }
 
+          // Check if a file was passed via OS file association on startup
+          // Use initWithContent to replace the initial empty Untitled tab (not openFileByPath which adds a new tab)
+          // Placed here (inside Promise.all.then) to ensure knowledgeBases are loaded before adjustSidebarForFile
+          invoke<string | null>('get_opened_file').then(async (filePath) => {
+            if (filePath) {
+              const fileContent = await loadFile(filePath);
+              const fileName = getFileNameFromPath(filePath);
+              let mtime: number | null = null;
+              try {
+                const result = await invoke('get_files_mtime', { paths: [filePath] }) as [string, number][];
+                if (result.length > 0) mtime = result[0][1];
+              } catch { /* ignore */ }
+              tabsStore.initWithContent(fileContent, filePath, fileName);
+              if (mtime !== null) {
+                const state = tabsStore.getState();
+                tabsStore.updateTabMtime(state.activeTabId, mtime);
+              }
+              content = fileContent;
+              currentFileName = fileName;
+              editorStore.batchRestore({
+                filePath, content: fileContent, isDirty: false, cursorOffset: 0, scrollFraction: 0,
+              });
+              await replaceContentAndScrollToTop(fileContent);
+              resetWorkflowState();
+              adjustSidebarForFile(filePath);
+            }
+          });
+
           // Auto-check for updates (once daily)
           if (shouldCheckToday(settings.lastUpdateCheckDate)) {
             checkForUpdate()
@@ -1887,6 +1915,20 @@ ${tr('welcome.tip')}
     let tabTransferUnlisten: UnlistenFn | undefined;
     let tabDragHoverUnlisten: UnlistenFn | undefined;
     let tabDragEndUnlisten: UnlistenFn | undefined;
+
+    /** Adjust sidebar visibility based on whether the opened file belongs to a knowledge base. */
+    function adjustSidebarForFile(filePath: string): void {
+      const matchingKB = filesStore.findKnowledgeBaseForFile(filePath);
+      if (matchingKB) {
+        if (!showSidebar) settingsStore.update({ showSidebar: true });
+        const filesState = filesStore.getState();
+        if (filesState.activeKnowledgeBaseId !== matchingKB.id) {
+          filesStore.setActiveKnowledgeBase(matchingKB.id).catch(() => {});
+        }
+      } else {
+        if (showSidebar) settingsStore.update({ showSidebar: false });
+      }
+    }
 
     if (isTauri) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -2044,34 +2086,9 @@ ${tr('welcome.tip')}
         const filePath = event.payload;
         if (filePath) {
           await openFileByPath(filePath);
+          adjustSidebarForFile(filePath);
         }
       }).then(unlisten => { openFileUnlisten = unlisten; });
-
-      // Check if a file was passed via OS file association on startup
-      // Use initWithContent to replace the initial empty Untitled tab (not openFileByPath which adds a new tab)
-      invoke<string | null>('get_opened_file').then(async (filePath) => {
-        if (filePath) {
-          const fileContent = await loadFile(filePath);
-          const fileName = getFileNameFromPath(filePath);
-          let mtime: number | null = null;
-          try {
-            const result = await invoke('get_files_mtime', { paths: [filePath] }) as [string, number][];
-            if (result.length > 0) mtime = result[0][1];
-          } catch { /* ignore */ }
-          tabsStore.initWithContent(fileContent, filePath, fileName);
-          if (mtime !== null) {
-            const state = tabsStore.getState();
-            tabsStore.updateTabMtime(state.activeTabId, mtime);
-          }
-          content = fileContent;
-          currentFileName = fileName;
-          editorStore.batchRestore({
-            filePath, content: fileContent, isDirty: false, cursorOffset: 0, scrollFraction: 0,
-          });
-          await replaceContentAndScrollToTop(fileContent);
-          resetWorkflowState();
-        }
-      });
 
       // Check if this window was created by tab detach (pending tab data)
       invoke<{
