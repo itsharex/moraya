@@ -751,42 +751,51 @@
     return '../'.repeat(ups) + remainder;
   }
 
-  /** Handle paste event for clipboard images */
+  /** Handle paste event for clipboard images.
+   *  Must be registered on the capture phase so it runs BEFORE ProseMirror's
+   *  default paste handler, which would otherwise insert base64 <img> from HTML. */
   function handlePaste(event: ClipboardEvent) {
     if (!event.clipboardData) return;
+
+    // Check if clipboard contains an image file (blob).
+    // This takes priority over HTML content — browsers copying images from web pages
+    // include both text/html (with <img src="data:...">) and image/png (blob).
+    // We only want one image: the locally saved file, not the base64 from HTML.
+    let imageFile: File | null = null;
     const items = event.clipboardData.items;
     for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      if (item.type.startsWith('image/')) {
-        event.preventDefault();
-        const file = item.getAsFile();
-        if (!file) continue;
-
-        if (isTauri) {
-          // Save image to disk and insert file path
-          saveImageToDisk(file).then(path => {
-            if (path) {
-              insertImageAtCursor(path);
-            } else {
-              // Fallback to blob URL if save failed
-              insertImageAtCursor(URL.createObjectURL(file));
-            }
-          });
-        } else {
-          // Non-Tauri: use blob URL (web preview)
-          const blobUrl = URL.createObjectURL(file);
-          insertImageAtCursor(blobUrl);
-        }
-
-        // Auto-upload if enabled (still works — uploads the saved file)
-        const target = settingsStore.getDefaultImageHostTarget();
-        if (target?.autoUpload) {
-          // For auto-upload, create a temporary blob URL for the upload logic
-          const blobUrl = URL.createObjectURL(file);
-          uploadAndReplace(blobUrl, targetToConfig(target));
-        }
-        return;
+      if (items[i].type.startsWith('image/')) {
+        imageFile = items[i].getAsFile();
+        if (imageFile) break;
       }
+    }
+
+    if (!imageFile) return; // No image in clipboard — let ProseMirror handle text/html
+
+    // Prevent ProseMirror from also processing the HTML (which would insert a base64 image)
+    event.preventDefault();
+    event.stopImmediatePropagation();
+
+    if (isTauri) {
+      // Save image to disk and insert file path
+      saveImageToDisk(imageFile).then(path => {
+        if (path) {
+          insertImageAtCursor(path);
+        } else {
+          // Fallback to blob URL if save failed
+          insertImageAtCursor(URL.createObjectURL(imageFile!));
+        }
+      });
+    } else {
+      // Non-Tauri: use blob URL (web preview)
+      insertImageAtCursor(URL.createObjectURL(imageFile));
+    }
+
+    // Auto-upload if enabled
+    const target = settingsStore.getDefaultImageHostTarget();
+    if (target?.autoUpload) {
+      const blobUrl = URL.createObjectURL(imageFile);
+      uploadAndReplace(blobUrl, targetToConfig(target));
     }
   }
 
@@ -1747,7 +1756,7 @@
     if (proseMirrorEl) {
       proseMirrorEl.addEventListener('click', handleProseMirrorClick as EventListener);
       proseMirrorEl.addEventListener('mousemove', handleCheckboxHover as EventListener);
-      proseMirrorEl.addEventListener('paste', handlePaste as EventListener);
+      proseMirrorEl.addEventListener('paste', handlePaste as EventListener, true);
       proseMirrorEl.addEventListener('contextmenu', handleContextMenu as EventListener);
     }
 
@@ -2335,7 +2344,7 @@
       mountedProseMirrorEl.removeEventListener('click', mountedHandlers.handleProseMirrorClick as EventListener);
       mountedProseMirrorEl.removeEventListener('mousemove', handleCheckboxHover as EventListener);
 
-      mountedProseMirrorEl.removeEventListener('paste', handlePaste as EventListener);
+      mountedProseMirrorEl.removeEventListener('paste', handlePaste as EventListener, true);
       mountedProseMirrorEl.removeEventListener('contextmenu', handleContextMenu as EventListener);
     }
     mountedEditorEl = null;
