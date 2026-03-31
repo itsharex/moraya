@@ -97,6 +97,45 @@
   // calls on every scroll frame that cause layout thrashing.
   let cachedHeadingTops: number[] = [];
 
+  /**
+   * Update custom caret overlay position from ProseMirror cursor.
+   * Native caret height follows font metrics (~17px for 15px font);
+   * custom caret is fixed at 25px to match source mode.
+   */
+  function updateVisualCaret() {
+    if (!editor || !visualCaretEl || !editorEl) return;
+    const view = editor.view;
+    const sel = view.state.selection;
+
+    if (!sel.empty || !view.hasFocus()) {
+      visualCaretEl.style.display = 'none';
+      return;
+    }
+
+    try {
+      const coords = view.coordsAtPos(sel.from);
+      const rootRect = editorEl.getBoundingClientRect();
+      const nativeH = coords.bottom - coords.top;
+      const targetH = 25; // Match source mode line-height
+      const offsetY = (targetH - nativeH) / 2;
+
+      visualCaretEl.style.display = 'block';
+      visualCaretEl.style.left = `${coords.left - rootRect.left}px`;
+      visualCaretEl.style.top = `${coords.top - rootRect.top - offsetY}px`;
+      visualCaretEl.style.height = `${targetH}px`;
+
+      // Restart blink: remove class, re-add in next frame
+      visualCaretEl.classList.remove('blink');
+      if (caretBlinkRaf) cancelAnimationFrame(caretBlinkRaf);
+      caretBlinkRaf = requestAnimationFrame(() => {
+        caretBlinkRaf = undefined;
+        visualCaretEl?.classList.add('blink');
+      });
+    } catch {
+      visualCaretEl.style.display = 'none';
+    }
+  }
+
   function computeHeadingTops() {
     headingTopsRaf = undefined;
     if (!editor) { cachedHeadingTops = []; return; }
@@ -209,6 +248,8 @@
   let focusRetryInterval: ReturnType<typeof setInterval> | undefined; // interval for new-window focus retries
   let cursorLineCleanup: (() => void) | null = null; // selectionchange listener for cursor line tracking
   let lastReportedCursorLine = -1; // dedup cursor line reports
+  let visualCaretEl: HTMLDivElement | null = null; // Custom caret overlay for consistent 25px height
+  let caretBlinkRaf: number | undefined; // RAF for restarting blink animation
 
   // References for event listener cleanup in onDestroy
   let mountedEditorEl: HTMLDivElement | null = null;
@@ -1531,41 +1572,53 @@
     onEditorReady?.(editor);
     if (showOutline) extractHeadings();
 
-    // Track cursor line changes for split mode sync.
-    // Uses ProseMirror's dispatchTransaction for zero-delay detection,
-    // and textBetween for lightweight line counting (no serialization).
-    if (onCursorLineChange) {
-      const origDispatch = createdEditor.view.dispatch.bind(createdEditor.view);
-      const reportCursorLine = () => {
-        if (!editor) return;
-        const sel = editor.view.state.selection;
-        // Count block separators in text before cursor.
-        // Use '\n\n' as block separator to match markdown's blank line between paragraphs.
-        const textBefore = editor.view.state.doc.textBetween(0, sel.from, '\n\n', '');
-        const frontmatterLines = storedFrontmatter ? storedFrontmatter.split('\n').length - 1 : 0;
-        const lineIndex = frontmatterLines + (textBefore.split('\n').length - 1);
-        if (lineIndex !== lastReportedCursorLine) {
-          lastReportedCursorLine = lineIndex;
-          onCursorLineChange(lineIndex);
+    // ── Custom caret overlay ──────────────────────────────────
+    // Native caret height follows font metrics (~17px for 15px font).
+    // Custom caret is fixed at 25px to match source mode.
+    visualCaretEl = document.createElement('div');
+    visualCaretEl.className = 'visual-custom-caret blink';
+    visualCaretEl.setAttribute('aria-hidden', 'true');
+    editorEl.appendChild(visualCaretEl);
+
+    // Cursor line reporter for split mode sync
+    const reportCursorLine = onCursorLineChange ? () => {
+      if (!editor) return;
+      const sel = editor.view.state.selection;
+      const textBefore = editor.view.state.doc.textBetween(0, sel.from, '\n\n', '');
+      const frontmatterLines = storedFrontmatter ? storedFrontmatter.split('\n').length - 1 : 0;
+      const lineIndex = frontmatterLines + (textBefore.split('\n').length - 1);
+      if (lineIndex !== lastReportedCursorLine) {
+        lastReportedCursorLine = lineIndex;
+        onCursorLineChange!(lineIndex);
+      }
+    } : null;
+
+    // Override dispatchTransaction: update caret + cursor line on every transaction
+    createdEditor.view.setProps({
+      dispatchTransaction(tr) {
+        const view = editor!.view;
+        const oldFrom = view.state.selection.from;
+        view.updateState(view.state.apply(tr));
+        updateVisualCaret();
+        if (view.state.selection.from !== oldFrom) {
+          reportCursorLine?.();
         }
-      };
-      // Override dispatchTransaction to detect selection changes immediately
-      createdEditor.view.setProps({
-        dispatchTransaction(tr) {
-          const view = editor!.view;
-          const oldSel = view.state.selection.from;
-          view.updateState(view.state.apply(tr));
-          if (view.state.selection.from !== oldSel) {
-            reportCursorLine();
-          }
-        },
-      });
-      // Also handle clicks (which may not dispatch a transaction)
-      const pmEl = editorEl.querySelector('.ProseMirror');
-      const handleClick = () => reportCursorLine();
-      pmEl?.addEventListener('mouseup', handleClick);
-      cursorLineCleanup = () => pmEl?.removeEventListener('mouseup', handleClick);
-    }
+      },
+    });
+
+    // Track clicks + focus/blur for caret updates
+    const pmEl = editorEl.querySelector('.ProseMirror') as HTMLElement | null;
+    const handleCaretMouseup = () => { updateVisualCaret(); reportCursorLine?.(); };
+    const handleCaretFocus = () => { requestAnimationFrame(updateVisualCaret); };
+    const handleCaretBlur = () => { if (visualCaretEl) visualCaretEl.style.display = 'none'; };
+    pmEl?.addEventListener('mouseup', handleCaretMouseup);
+    pmEl?.addEventListener('focus', handleCaretFocus);
+    pmEl?.addEventListener('blur', handleCaretBlur);
+    cursorLineCleanup = () => {
+      pmEl?.removeEventListener('mouseup', handleCaretMouseup);
+      pmEl?.removeEventListener('focus', handleCaretFocus);
+      pmEl?.removeEventListener('blur', handleCaretBlur);
+    };
 
     // Apply any content that was requested while the editor was still initializing
     if (pendingSyncMd !== null) {
@@ -2322,6 +2375,8 @@
 
   onDestroy(() => {
     isMounted = false; // Signal async callbacks to stop
+    if (caretBlinkRaf) cancelAnimationFrame(caretBlinkRaf);
+    if (visualCaretEl) { visualCaretEl.remove(); visualCaretEl = null; }
     if (syncResetTimer) clearTimeout(syncResetTimer);
     if (externalSyncTimer) clearTimeout(externalSyncTimer);
     if (focusRetryInterval) clearInterval(focusRetryInterval);
@@ -2592,6 +2647,7 @@
   }
 
   .editor-root {
+    position: relative;
     width: 100%;
     word-wrap: break-word;
     overflow-wrap: break-word;

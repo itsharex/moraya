@@ -6,7 +6,6 @@
   font-size: var(--font-size-base);
   line-height: var(--line-height);
   color: var(--text-primary);
-  caret-color: #0066cc;
 }
 
 /* Headings */
@@ -800,7 +799,8 @@
 .ProseMirror {
   outline: none;
   min-height: 0;
-  caret-color: #0066cc;
+  /* Hide native caret — replaced by .visual-custom-caret for consistent 25px height */
+  caret-color: transparent;
   cursor: text;
   /* Standard ProseMirror CSS — required for correct cursor positioning.
      Without pre-wrap, WebKit miscalculates caret coordinates at end of blocks
@@ -812,7 +812,7 @@
 }
 
 .ProseMirror:focus {
-  caret-color: #0066cc;
+  caret-color: transparent;
 }
 
 /* Ensure empty paragraphs have height for cursor visibility.
@@ -820,37 +820,30 @@
    Use :has(> br:only-child) to target paragraphs with only a <br> child. */
 .ProseMirror p:empty,
 .ProseMirror p:has(> br:only-child) {
-  min-height: 1em;
-  line-height: var(--line-height);
+  min-height: 25px;
+  line-height: 25px;
 }
 
-/* WebKit caret fix: WKWebView does not paint the native caret inside a <p>
-   that only contains a <br> (i.e. an empty paragraph). The element IS focused
-   and keystrokes DO register, but the blinking cursor is not rendered.
-   Fix: a ProseMirror plugin (caretFixPlugin in setup.ts) adds the
-   'caret-empty-para' class to whichever empty paragraph contains the cursor.
-   CSS then renders a fake animated caret via ::before. */
-@keyframes moraya-blink-caret {
+/* Visual mode custom caret — consistent 25px height matching source mode.
+   Native caret height follows font metrics (~17px for 15px font) in both
+   WebKit and Blink, so we hide it (caret-color: transparent above) and
+   render a custom overlay div (.visual-custom-caret) via Editor.svelte. */
+@keyframes visual-caret-blink {
   from, to { opacity: 1; }
   50% { opacity: 0; }
 }
 
-/* Only apply on macOS (WebKit) — on Windows/Linux (Chromium) the native caret works fine
-   and this CSS would create a double/ghost cursor. */
-/* Hide native caret when fake caret is active to prevent double cursors */
-.platform-macos .ProseMirror:focus .caret-empty-para {
-  caret-color: transparent;
-}
-.platform-macos .ProseMirror:focus .caret-empty-para:empty::before,
-.platform-macos .ProseMirror:focus .caret-empty-para:has(> br:only-child)::before {
-  content: '';
-  display: inline-block;
+.visual-custom-caret {
+  position: absolute;
   width: 2px;
-  height: 1em;
-  background-color: #0066cc;
-  animation: moraya-blink-caret 1s step-end infinite;
-  vertical-align: text-bottom;
+  background: #0066cc;
   pointer-events: none;
+  z-index: 10;
+  display: none;
+}
+
+.visual-custom-caret.blink {
+  animation: visual-caret-blink 1s step-end infinite;
 }
 
 .ProseMirror > *:first-child {

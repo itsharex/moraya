@@ -25,12 +25,12 @@
   --font-mono: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", "Consolas", monospace;
   --font-serif: Georgia, "Times New Roman", serif;
 
-  --font-size-base: 16px;
+  --font-size-base: 15px;
   --font-size-sm: 14px;
   --font-size-xs: 12px;
   --font-size-lg: 18px;
 
-  --line-height: 1.75;
+  --line-height: 25px;
 
   /* Spacing */
   --titlebar-height: 38px;

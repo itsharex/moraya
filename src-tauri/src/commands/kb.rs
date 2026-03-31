@@ -1112,11 +1112,6 @@ async fn do_index_files(
     }
 
     // Phase 2: Chunk files (with hash-based skip)
-    let mut all_chunks: Vec<ChunkMeta> = Vec::new();
-    let mut all_texts: Vec<String> = Vec::new();
-    let mut file_hashes: HashMap<String, String> = HashMap::new();
-    let mut chunk_id = 0usize;
-
     // Run chunking in spawn_blocking to avoid async runtime issues
     let kb_owned = kb.to_path_buf();
     let model_owned = model.to_string();

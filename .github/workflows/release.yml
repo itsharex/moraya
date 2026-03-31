@@ -7,7 +7,54 @@ on:
   workflow_dispatch:
 
 jobs:
+  create-release:
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    outputs:
+      release-id: ${{ steps.create.outputs.id }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create GitHub Release
+        id: create
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: 'Moraya ${{ github.ref_name }}'
+          body: |
+            See the assets below to download and install.
+
+            ### macOS
+
+            **Homebrew (recommended)**:
+            ```
+            brew tap zouwei/moraya
+            brew install --cask moraya
+            ```
+
+            **Manual**: Download the `.dmg` file below.
+            > If you see **"Moraya is damaged"**, open Terminal and run:
+            > ```
+            > xattr -cr /Applications/Moraya.app
+            > ```
+            > Or download the `fix-macos-gatekeeper.command` script below, double-click to run it.
+
+            ### Linux
+
+            - **.deb** — `sudo dpkg -i moraya_*.deb`
+            - **.AppImage** — `chmod +x Moraya_*.AppImage && ./Moraya_*.AppImage`
+
+            ### Windows
+
+            Run the `.msi` installer.
+
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   release:
+    needs: [create-release]
     permissions:
       contents: write
     strategy:
@@ -112,37 +159,7 @@ jobs:
           # APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'Moraya ${{ github.ref_name }}'
-          releaseBody: |
-            See the assets below to download and install.
-
-            ### macOS
-
-            **Homebrew (recommended)**:
-            ```
-            brew tap zouwei/moraya
-            brew install --cask moraya
-            ```
-
-            **Manual**: Download the `.dmg` file below.
-            > If you see **"Moraya is damaged"**, open Terminal and run:
-            > ```
-            > xattr -cr /Applications/Moraya.app
-            > ```
-            > Or download the `fix-macos-gatekeeper.command` script below, double-click to run it.
-
-            ### Linux
-
-            - **.deb** — `sudo dpkg -i moraya_*.deb`
-            - **.AppImage** — `chmod +x Moraya_*.AppImage && ./Moraya_*.AppImage`
-
-            ### Windows
-
-            Run the `.msi` installer.
-
-          releaseDraft: false
-          prerelease: false
+          releaseId: ${{ needs.create-release.outputs.release-id }}
           args: ${{ matrix.args }}
 
       # Generate macOS fix script as release asset
