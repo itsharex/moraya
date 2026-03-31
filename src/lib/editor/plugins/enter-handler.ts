@@ -150,7 +150,7 @@ export function createEnterHandlerPlugin(): Plugin {
             event.preventDefault();
             const hardbreak = view.state.schema.nodes.hardbreak;
             if (hardbreak) {
-              const tr = view.state.tr.replaceSelectionWith(hardbreak.create());
+              const tr = view.state.tr.replaceSelectionWith(hardbreak.create({ isInline: false }));
               view.dispatch(tr.scrollIntoView());
             }
             return true;

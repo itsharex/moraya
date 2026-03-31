@@ -325,10 +325,10 @@ function buildKeymap() {
       return wrapIn(schema.nodes.blockquote)(state, dispatch);
     },
 
-    // Hard break
+    // Hard break - explicitly set isInline to false for proper markdown serialization
     'Shift-Enter': (state, dispatch) => {
       if (dispatch) {
-        dispatch(state.tr.replaceSelectionWith(schema.nodes.hardbreak.create()).scrollIntoView());
+        dispatch(state.tr.replaceSelectionWith(schema.nodes.hardbreak.create({ isInline: false })).scrollIntoView());
       }
       return true;
     },

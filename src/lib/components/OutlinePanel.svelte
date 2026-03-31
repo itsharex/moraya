@@ -5,6 +5,7 @@
     id: string;
     level: number;
     text: string;
+    html?: string;
   }
 
   const OUTLINE_MIN_WIDTH = 120;
@@ -71,7 +72,11 @@
           onclick={() => onSelect?.(h)}
           title={h.text}
         >
-          {h.text}
+          {#if h.html}
+            {@html h.html}
+          {:else}
+            {h.text}
+          {/if}
         </button>
       {/each}
     {/if}
@@ -123,6 +128,10 @@
     overflow: hidden;
     text-overflow: ellipsis;
     transition: color 0.15s;
+  }
+
+  .outline-item :global(.katex) {
+    font-size: inherit;
   }
 
   .outline-item:hover {

@@ -536,11 +536,9 @@ const serializer = new MarkdownSerializer(
       }
     },
     hardbreak(state, node) {
-      if (node.attrs.isInline) {
-        state.write('\n');
-      } else {
-        state.write('  \n');
-      }
+      // Always use markdown hardbreak format (two spaces + newline)
+      // for consistent parsing and roundtrip fidelity
+      state.write('  \n');
     },
     html_block(state, node) {
       state.text(node.textContent, false);

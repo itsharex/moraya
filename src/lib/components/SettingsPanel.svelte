@@ -14,7 +14,7 @@
   import PluginsPanel from './PluginsPanel.svelte';
   import KBIndexSettings from './KBIndexSettings.svelte';
 
-  type Tab = 'general' | 'editor' | 'appearance' | 'ai' | 'image-ai' | 'mcp' | 'image' | 'publish' | 'permissions' | 'voice' | 'plugins' | 'knowledge-base';
+  type Tab = 'general' | 'ai' | 'image-ai' | 'mcp' | 'image' | 'publish' | 'permissions' | 'voice' | 'plugins' | 'knowledge-base';
 
   let {
     onClose,
@@ -136,8 +136,6 @@
       groupKey: 'settings.groups.general',
       items: [
         { key: 'general', icon: '⚙', labelKey: 'settings.tabs.general' },
-        { key: 'editor', icon: '✎', labelKey: 'settings.tabs.editor' },
-        { key: 'appearance', icon: '◐', labelKey: 'settings.tabs.appearance' },
         { key: 'permissions', icon: '🔒', labelKey: 'settings.tabs.permissions' },
       ],
     },
@@ -237,131 +235,15 @@
         <div class="tab-pane" class:active={activeTab === 'plugins'}><PluginsPanel /></div>
 
         {#if activeTab === 'general'}
-          <div class="setting-group">
-            <label class="setting-label" for="settings-locale">{$t('settings.language.label')}</label>
-            <select id="settings-locale" class="setting-input" value={currentLocale} onchange={handleLocaleChange}>
-              {#each SUPPORTED_LOCALES as loc}
-                <option value={loc.code}>{loc.code === 'system' ? $t('settings.language.system') : loc.label}</option>
-              {/each}
-            </select>
-          </div>
-
-          <div class="setting-group">
-            <label class="setting-label">
-              <input
-                type="checkbox"
-                checked={autoSave}
-                onchange={handleAutoSaveChange}
-              />
-              {$t('settings.autoSave.label')}
-            </label>
-          </div>
-
-          {#if autoSave}
-            <div class="setting-group">
-              <label class="setting-label" for="settings-autosave-interval">{$t('settings.autoSave.interval')}</label>
-              <div class="setting-row">
-                <input
-                  id="settings-autosave-interval"
-                  type="range"
-                  min="5"
-                  max="120"
-                  step="5"
-                  value={autoSaveInterval}
-                  oninput={handleIntervalChange}
-                  class="setting-range"
-                />
-                <span class="setting-value">{autoSaveInterval}s</span>
-              </div>
-            </div>
-          {/if}
-
-          <div class="setting-group">
-            <label class="setting-label">
-              <input
-                type="checkbox"
-                checked={rememberLastFolder}
-                onchange={(e: Event) => {
-                  const checked = (e.target as HTMLInputElement).checked;
-                  settingsStore.update({ rememberLastFolder: checked });
-                  if (!checked) {
-                    settingsStore.update({ lastOpenedFolder: null });
-                  }
-                }}
-              />
-              {$t('settings.rememberLastFolder')}
-            </label>
-          </div>
-
-          <div class="setting-group">
-            <label class="setting-label" for="settings-rules-history-count">{$t('settings.rulesHistoryCount')}</label>
-            <div class="setting-row">
-              <input
-                id="settings-rules-history-count"
-                type="number"
-                min="1"
-                max="100"
-                value={rulesHistoryCount}
-                oninput={(e: Event) => {
-                  const val = parseInt((e.target as HTMLInputElement).value, 10);
-                  if (val >= 1 && val <= 100) {
-                    settingsStore.update({ rulesHistoryCount: val });
-                  }
-                }}
-                class="setting-input setting-input-narrow"
-              />
-            </div>
-            <div class="setting-hint">{$t('settings.rulesHistoryCountHint')}</div>
-          </div>
-
-        {:else if activeTab === 'editor'}
-          <div class="setting-group">
-            <label class="setting-label" for="settings-line-width">{$t('settings.editor.lineWidth')}</label>
-            <div class="setting-row">
-              <input
-                id="settings-line-width"
-                type="range"
-                min="600"
-                max="1200"
-                step="50"
-                value={editorLineWidth}
-                oninput={handleLineWidthChange}
-                class="setting-range"
-              />
-              <span class="setting-value">{editorLineWidth}px</span>
-            </div>
-          </div>
-
-          <div class="setting-group">
-            <label class="setting-label" for="settings-tab-size">{$t('settings.editor.tabSize')}</label>
-            <select id="settings-tab-size" class="setting-input" value={editorTabSize} onchange={handleTabSizeChange}>
-              <option value={2}>2</option>
-              <option value={4}>4</option>
-              <option value={8}>8</option>
-            </select>
-          </div>
-
-          <div class="setting-group">
-            <label class="setting-label">
-              <input
-                type="checkbox"
-                checked={showLineNumbers}
-                onchange={handleLineNumbersChange}
-              />
-              {$t('settings.editor.showLineNumbers')}
-            </label>
-          </div>
-
-        {:else if activeTab === 'appearance'}
-          <!-- Theme section -->
-          <div class="setting-section">
-            <div class="section-header">{$t('settings.appearance.themeSection')}</div>
+          <!-- General Section -->
+          <div class="setting-section general-section">
+            <div class="section-header">{$t('settings.tabs.general')}</div>
 
             <div class="setting-group">
-              <label class="setting-label" for="settings-color-theme">{$t('settings.theme.label')}</label>
-              <select id="settings-color-theme" class="setting-input" value={colorTheme} onchange={handleColorThemeChange}>
-                {#each builtinThemes as ct}
-                  <option value={ct.id}>{ct.name}</option>
+              <label class="setting-label" for="settings-locale">{$t('settings.language.label')}</label>
+              <select id="settings-locale" class="setting-input" value={currentLocale} onchange={handleLocaleChange}>
+                {#each SUPPORTED_LOCALES as loc}
+                  <option value={loc.code}>{loc.code === 'system' ? $t('settings.language.system') : loc.label}</option>
                 {/each}
               </select>
             </div>
@@ -370,56 +252,185 @@
               <label class="setting-label">
                 <input
                   type="checkbox"
-                  checked={useSeparateDarkTheme}
-                  onchange={handleSeparateDarkThemeChange}
+                  checked={autoSave}
+                  onchange={handleAutoSaveChange}
                 />
-                {$t('settings.appearance.separateDarkTheme')}
+                {$t('settings.autoSave.label')}
               </label>
             </div>
 
-            {#if useSeparateDarkTheme}
+            {#if autoSave}
               <div class="setting-group">
-                <label class="setting-label" for="settings-dark-theme">{$t('settings.appearance.darkTheme')}</label>
-                <select id="settings-dark-theme" class="setting-input" value={darkColorTheme} onchange={handleDarkColorThemeChange}>
-                  {#each darkThemes as ct}
+                <label class="setting-label" for="settings-autosave-interval">{$t('settings.autoSave.interval')}</label>
+                <div class="setting-row">
+                  <input
+                    id="settings-autosave-interval"
+                    type="range"
+                    min="5"
+                    max="120"
+                    step="5"
+                    value={autoSaveInterval}
+                    oninput={handleIntervalChange}
+                    class="setting-range"
+                  />
+                  <span class="setting-value">{autoSaveInterval}s</span>
+                </div>
+              </div>
+            {/if}
+
+            <div class="setting-group">
+              <label class="setting-label">
+                <input
+                  type="checkbox"
+                  checked={rememberLastFolder}
+                  onchange={(e: Event) => {
+                    const checked = (e.target as HTMLInputElement).checked;
+                    settingsStore.update({ rememberLastFolder: checked });
+                    if (!checked) {
+                      settingsStore.update({ lastOpenedFolder: null });
+                    }
+                  }}
+                />
+                {$t('settings.rememberLastFolder')}
+              </label>
+            </div>
+
+            <div class="setting-group">
+              <label class="setting-label" for="settings-rules-history-count">{$t('settings.rulesHistoryCount')}</label>
+              <div class="setting-row">
+                <input
+                  id="settings-rules-history-count"
+                  type="number"
+                  min="1"
+                  max="100"
+                  value={rulesHistoryCount}
+                  oninput={(e: Event) => {
+                    const val = parseInt((e.target as HTMLInputElement).value, 10);
+                    if (val >= 1 && val <= 100) {
+                      settingsStore.update({ rulesHistoryCount: val });
+                    }
+                  }}
+                  class="setting-input setting-input-narrow"
+                />
+              </div>
+              <div class="setting-hint">{$t('settings.rulesHistoryCountHint')}</div>
+            </div>
+          </div>
+
+          <!-- Editing Section -->
+          <div class="setting-section">
+            <div class="section-header">{$t('settings.tabs.editor')}</div>
+
+            <div class="setting-group">
+              <label class="setting-label" for="settings-line-width">{$t('settings.editor.lineWidth')}</label>
+              <div class="setting-row">
+                <input
+                  id="settings-line-width"
+                  type="range"
+                  min="600"
+                  max="1200"
+                  step="50"
+                  value={editorLineWidth}
+                  oninput={handleLineWidthChange}
+                  class="setting-range"
+                />
+                <span class="setting-value">{editorLineWidth}px</span>
+              </div>
+            </div>
+
+            <div class="setting-group">
+              <label class="setting-label" for="settings-tab-size">{$t('settings.editor.tabSize')}</label>
+              <select id="settings-tab-size" class="setting-input" value={editorTabSize} onchange={handleTabSizeChange}>
+                <option value={2}>2</option>
+                <option value={4}>4</option>
+                <option value={8}>8</option>
+              </select>
+            </div>
+
+            <div class="setting-group">
+              <label class="setting-label">
+                <input
+                  type="checkbox"
+                  checked={showLineNumbers}
+                  onchange={handleLineNumbersChange}
+                />
+                {$t('settings.editor.showLineNumbers')}
+              </label>
+            </div>
+          </div>
+
+          <!-- Display Section -->
+          <div class="setting-section">
+            <div class="section-header">{$t('settings.tabs.appearance')}</div>
+
+            <!-- Theme subsection -->
+            <div class="setting-subsection">
+              <div class="subsection-label">{$t('settings.appearance.themeSection')}</div>
+
+              <div class="setting-group">
+                <label class="setting-label" for="settings-color-theme">{$t('settings.theme.label')}</label>
+                <select id="settings-color-theme" class="setting-input" value={colorTheme} onchange={handleColorThemeChange}>
+                  {#each builtinThemes as ct}
                     <option value={ct.id}>{ct.name}</option>
                   {/each}
                 </select>
               </div>
-            {/if}
-          </div>
 
-          <!-- Dark mode section -->
-          <div class="setting-section">
-            <div class="section-header">{$t('settings.appearance.darkModeSection')}</div>
+              <div class="setting-group">
+                <label class="setting-label">
+                  <input
+                    type="checkbox"
+                    checked={useSeparateDarkTheme}
+                    onchange={handleSeparateDarkThemeChange}
+                  />
+                  {$t('settings.appearance.separateDarkTheme')}
+                </label>
+              </div>
 
-            <div class="setting-group">
-              <label class="setting-label" for="settings-dark-mode">{$t('settings.appearance.darkModeLabel')}</label>
-              <select id="settings-dark-mode" class="setting-input" value={theme} onchange={handleThemeChange}>
-                <option value="system">{$t('settings.theme.system')}</option>
-                <option value="light">{$t('settings.theme.light')}</option>
-                <option value="dark">{$t('settings.theme.dark')}</option>
-              </select>
+              {#if useSeparateDarkTheme}
+                <div class="setting-group">
+                  <label class="setting-label" for="settings-dark-theme">{$t('settings.appearance.darkTheme')}</label>
+                  <select id="settings-dark-theme" class="setting-input" value={darkColorTheme} onchange={handleDarkColorThemeChange}>
+                    {#each darkThemes as ct}
+                      <option value={ct.id}>{ct.name}</option>
+                    {/each}
+                  </select>
+                </div>
+              {/if}
             </div>
-          </div>
 
-          <!-- Font section -->
-          <div class="setting-section">
-            <div class="section-header">{$t('settings.appearance.fontSection')}</div>
+            <!-- Dark mode subsection -->
+            <div class="setting-subsection">
+              <div class="subsection-label">{$t('settings.appearance.darkModeSection')}</div>
 
-            <div class="setting-group">
-              <label class="setting-label" for="settings-font-size">{$t('settings.fontSize.label')}</label>
-              <div class="setting-row">
-                <input
-                  id="settings-font-size"
-                  type="range"
-                  min="12"
-                  max="24"
-                  value={fontSize}
-                  oninput={handleFontSizeChange}
-                  class="setting-range"
-                />
-                <span class="setting-value">{fontSize}px</span>
+              <div class="setting-group">
+                <label class="setting-label" for="settings-dark-mode">{$t('settings.appearance.darkModeLabel')}</label>
+                <select id="settings-dark-mode" class="setting-input" value={theme} onchange={handleThemeChange}>
+                  <option value="system">{$t('settings.theme.system')}</option>
+                  <option value="light">{$t('settings.theme.light')}</option>
+                  <option value="dark">{$t('settings.theme.dark')}</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Font subsection -->
+            <div class="setting-subsection">
+              <div class="subsection-label">{$t('settings.appearance.fontSection')}</div>
+
+              <div class="setting-group">
+                <label class="setting-label" for="settings-font-size">{$t('settings.fontSize.label')}</label>
+                <div class="setting-row">
+                  <input
+                    id="settings-font-size"
+                    type="range"
+                    min="12"
+                    max="24"
+                    value={fontSize}
+                    oninput={handleFontSizeChange}
+                    class="setting-range"
+                  />
+                  <span class="setting-value">{fontSize}px</span>
+                </div>
               </div>
             </div>
           </div>
@@ -578,6 +589,7 @@
     flex-direction: column;
     padding: 0.25rem 0.5rem;
     gap: 0.125rem;
+    overflow-y: auto;
   }
 
   .nav-group-label {
@@ -597,7 +609,7 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.45rem 0.6rem;
+    padding: 0.35rem 0.6rem;
     border: none;
     background: transparent;
     color: var(--text-secondary);
@@ -690,7 +702,7 @@
 
   .content-body {
     flex: 1;
-    padding: 1.25rem;
+    padding: 0.75rem 1.25rem;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
@@ -773,16 +785,43 @@
     gap: 0.75rem;
   }
 
-  .setting-section + .setting-section {
-    margin-top: 0.5rem;
+  .setting-section.general-section {
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+    border-top: none !important;
+  }
+
+  .setting-section:not(.general-section) {
+    margin-top: 1.5rem;
     padding-top: 1rem;
     border-top: 1px solid var(--border-light);
   }
 
   .section-header {
     font-size: var(--font-size-sm);
-    font-weight: 600;
+    font-weight: 700;
     color: var(--text-primary);
+  }
+
+  /* Subsection labels for grouped settings within a section */
+  .setting-subsection {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .setting-subsection:not(:first-child) {
+    margin-top: 1rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border-light);
+  }
+
+  .subsection-label {
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
   }
 
   .setting-toggle {

@@ -6,7 +6,7 @@
   font-size: var(--font-size-base);
   line-height: var(--line-height);
   color: var(--text-primary);
-  caret-color: var(--accent-color);
+  caret-color: #0066cc;
 }
 
 /* Headings */
@@ -658,6 +658,13 @@
   margin: 0;
 }
 
+/* Hardbreak styling — render as newline without affecting cursor size */
+.moraya-editor .hardbreak-marker {
+  white-space: pre;
+  display: inline;
+  line-height: inherit;
+}
+
 /* Hide hardbreak and trailing-break nodes adjacent to block images —
    the block display already handles line separation, and ProseMirror's
    trailing <br> would otherwise add an extra line-height gap. */
@@ -793,7 +800,7 @@
 .ProseMirror {
   outline: none;
   min-height: 0;
-  caret-color: var(--text-primary);
+  caret-color: #0066cc;
   cursor: text;
   /* Standard ProseMirror CSS — required for correct cursor positioning.
      Without pre-wrap, WebKit miscalculates caret coordinates at end of blocks
@@ -805,7 +812,7 @@
 }
 
 .ProseMirror:focus {
-  caret-color: var(--text-primary);
+  caret-color: #0066cc;
 }
 
 /* Ensure empty paragraphs have height for cursor visibility.
@@ -838,9 +845,9 @@
 .platform-macos .ProseMirror:focus .caret-empty-para:has(> br:only-child)::before {
   content: '';
   display: inline-block;
-  width: 1.5px;
-  height: 1.2em;
-  background-color: var(--text-primary);
+  width: 2px;
+  height: 1em;
+  background-color: #0066cc;
   animation: moraya-blink-caret 1s step-end infinite;
   vertical-align: text-bottom;
   pointer-events: none;

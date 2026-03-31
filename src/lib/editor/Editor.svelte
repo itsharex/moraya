@@ -33,6 +33,7 @@
   import ImageToolbar from './ImageToolbar.svelte';
   import ImageAltEditor from './ImageAltEditor.svelte';
   import OutlinePanel, { type OutlineHeading } from '$lib/components/OutlinePanel.svelte';
+  import katex from 'katex';
 
   const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico', 'tiff', 'tif', 'avif']);
 
@@ -63,6 +64,7 @@
     onWorkflowSEO,
     onWorkflowImageGen,
     onWorkflowPublish,
+    onCursorLineChange,
   }: {
     content?: string;
     showOutline?: boolean;
@@ -74,6 +76,7 @@
     onWorkflowSEO?: () => void;
     onWorkflowImageGen?: () => void;
     onWorkflowPublish?: () => void;
+    onCursorLineChange?: (lineIndex: number) => void;
   } = $props();
 
   let editorLineWidth = $state(settingsStore.getState().editorLineWidth);
@@ -116,6 +119,25 @@
     outlineTimer = setTimeout(extractHeadings, 300);
   }
 
+  /** Build HTML string for a heading node, rendering math_inline via KaTeX */
+  function headingToHtml(node: import('prosemirror-model').Node): string {
+    let hasMath = false;
+    node.forEach(child => { if (child.type.name === 'math_inline') hasMath = true; });
+    if (!hasMath) return '';
+    const parts: string[] = [];
+    node.forEach(child => {
+      if (child.type.name === 'math_inline') {
+        const tex = child.textContent;
+        try { parts.push(katex.renderToString(tex, { throwOnError: false })); }
+        catch { parts.push(tex); }
+      } else {
+        // Escape HTML for plain text
+        parts.push(child.textContent.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'));
+      }
+    });
+    return parts.join('');
+  }
+
   function extractHeadings() {
     if (!editor || !showOutline) { outlineHeadings = []; cachedHeadingTops = []; return; }
     try {
@@ -123,7 +145,8 @@
       const heads: OutlineHeading[] = [];
       view.state.doc.descendants((node, pos) => {
         if (node.type.name === 'heading') {
-          heads.push({ id: `h-${pos}`, level: node.attrs.level as number, text: node.textContent });
+          const html = headingToHtml(node);
+          heads.push({ id: `h-${pos}`, level: node.attrs.level as number, text: node.textContent, ...(html ? { html } : {}) });
         }
       });
       outlineHeadings = heads;
@@ -165,7 +188,8 @@
     // even before the scroll event fires (scroll-based updateActiveHeading may
     // not fire if the target is already near the current scroll position).
     activeHeadingId = h.id;
-    wrapper.scrollTo({ top: cachedHeadingTops[idx] - 60, behavior: 'smooth' });
+    // Use scrollTop instead of scrollTo() for better Windows compatibility
+    wrapper.scrollTop = cachedHeadingTops[idx] - 60;
   }
 
   let isReady = $state(false);
@@ -180,6 +204,8 @@
   let tableToolbarRaf: number | undefined; // RAF throttle for table toolbar updates
   let syncGeneration = 0; // Incremented on each syncContent call; stale async callbacks bail out
   let focusRetryInterval: ReturnType<typeof setInterval> | undefined; // interval for new-window focus retries
+  let cursorLineCleanup: (() => void) | null = null; // selectionchange listener for cursor line tracking
+  let lastReportedCursorLine = -1; // dedup cursor line reports
 
   // References for event listener cleanup in onDestroy
   let mountedEditorEl: HTMLDivElement | null = null;
@@ -1242,6 +1268,42 @@
     onEditorReady?.(editor);
     if (showOutline) extractHeadings();
 
+    // Track cursor line changes for split mode sync.
+    // Uses ProseMirror's dispatchTransaction for zero-delay detection,
+    // and textBetween for lightweight line counting (no serialization).
+    if (onCursorLineChange) {
+      const origDispatch = createdEditor.view.dispatch.bind(createdEditor.view);
+      const reportCursorLine = () => {
+        if (!editor) return;
+        const sel = editor.view.state.selection;
+        // Count block separators in text before cursor.
+        // Use '\n\n' as block separator to match markdown's blank line between paragraphs.
+        const textBefore = editor.view.state.doc.textBetween(0, sel.from, '\n\n', '');
+        const frontmatterLines = storedFrontmatter ? storedFrontmatter.split('\n').length - 1 : 0;
+        const lineIndex = frontmatterLines + (textBefore.split('\n').length - 1);
+        if (lineIndex !== lastReportedCursorLine) {
+          lastReportedCursorLine = lineIndex;
+          onCursorLineChange(lineIndex);
+        }
+      };
+      // Override dispatchTransaction to detect selection changes immediately
+      createdEditor.view.setProps({
+        dispatchTransaction(tr) {
+          const view = editor!.view;
+          const oldSel = view.state.selection.from;
+          view.updateState(view.state.apply(tr));
+          if (view.state.selection.from !== oldSel) {
+            reportCursorLine();
+          }
+        },
+      });
+      // Also handle clicks (which may not dispatch a transaction)
+      const pmEl = editorEl.querySelector('.ProseMirror');
+      const handleClick = () => reportCursorLine();
+      pmEl?.addEventListener('mouseup', handleClick);
+      cursorLineCleanup = () => pmEl?.removeEventListener('mouseup', handleClick);
+    }
+
     // Apply any content that was requested while the editor was still initializing
     if (pendingSyncMd !== null) {
       const md = pendingSyncMd;
@@ -2000,6 +2062,7 @@
     if (syncResetTimer) clearTimeout(syncResetTimer);
     if (externalSyncTimer) clearTimeout(externalSyncTimer);
     if (focusRetryInterval) clearInterval(focusRetryInterval);
+    cursorLineCleanup?.();
     if (tableToolbarRaf) cancelAnimationFrame(tableToolbarRaf); // legacy guard, noop
     if (hoverRaf) cancelAnimationFrame(hoverRaf);
     if (outlineTimer) clearTimeout(outlineTimer);

@@ -3,6 +3,7 @@
   import { settingsStore } from '../stores/settings-store';
   import { editorStore } from '../stores/editor-store';
   import OutlinePanel, { type OutlineHeading } from '$lib/components/OutlinePanel.svelte';
+  import katex from 'katex';
 
   let {
     content = $bindable(''),
@@ -39,13 +40,32 @@
   let scrollRafOutline: number | undefined;
 
   /** Build a map from heading id → line index for quick lookup */
+  /** Render inline $...$ math in heading text to KaTeX HTML */
+  function renderHeadingHtml(text: string): string {
+    if (!text.includes('$')) return '';
+    const parts = text.split(/(\$[^$]+\$)/g);
+    let hasMath = false;
+    const html = parts.map(p => {
+      if (p.startsWith('$') && p.endsWith('$') && p.length > 2) {
+        hasMath = true;
+        const tex = p.slice(1, -1);
+        try { return katex.renderToString(tex, { throwOnError: false }); }
+        catch { return tex; }
+      }
+      return p.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }).join('');
+    return hasMath ? html : '';
+  }
+
   function extractHeadingsFromMarkdown() {
     const heads: OutlineHeading[] = [];
     const lines = content.split('\n');
     for (let i = 0; i < lines.length; i++) {
       const m = lines[i].match(/^(#{1,6})\s+(.+)$/);
       if (m) {
-        heads.push({ id: `h-${i}`, level: m[1].length, text: m[2].replace(/\s*#+\s*$/, '') });
+        const text = m[2].replace(/\s*#+\s*$/, '');
+        const html = renderHeadingHtml(text);
+        heads.push({ id: `h-${i}`, level: m[1].length, text, ...(html ? { html } : {}) });
       }
     }
     outlineHeadings = heads;
@@ -87,66 +107,72 @@
   // corresponding text line. We measure via a temporary off-screen element
   // that mirrors the textarea's font/width/wrapping.
   let lineHeights = $state<number[]>([]);
-  let lineHeightRaf: number | null = null;
 
-  function computeLineHeights() {
-    if (!showLineNumbers || !textareaEl) { lineHeights = []; return; }
-    if (lineHeightRaf !== null) cancelAnimationFrame(lineHeightRaf);
-    lineHeightRaf = requestAnimationFrame(() => {
-      lineHeightRaf = null;
-      if (!textareaEl) return;
-      const lines = content.split('\n');
-      const measure = document.createElement('div');
-      const cs = getComputedStyle(textareaEl);
-      measure.style.font = cs.font;
-      measure.style.lineHeight = cs.lineHeight;
-      measure.style.letterSpacing = cs.letterSpacing;
-      measure.style.tabSize = cs.tabSize;
-      measure.style.whiteSpace = 'pre-wrap';
-      measure.style.wordWrap = 'break-word';
-      measure.style.overflowWrap = 'break-word';
-      measure.style.width = textareaEl.clientWidth + 'px';
-      measure.style.visibility = 'hidden';
-      measure.style.position = 'absolute';
-      measure.style.top = '0';
-      measure.style.left = '-9999px';
+  // ── Current line highlight + custom caret ──
+  let currentLineIndex = $state<number>(0);
+  let currentLineTop = $state<number>(0);
+  let currentLineHeight = $state<number>(0);
+  // Custom caret (replaces native caret to ensure consistent height on all lines)
+  let caretX = $state<number>(0);
+  let caretY = $state<number>(0);
+  let caretH = $state<number>(25);
+  let showCustomCaret = $state(false);
+  let caretKey = $state(0); // increment to restart blink animation
+  let selectionChangeCleanup: (() => void) | null = null;
 
-      const divs: HTMLDivElement[] = [];
-      for (const line of lines) {
-        const d = document.createElement('div');
-        d.textContent = line || '\u00A0';
-        divs.push(d);
-        measure.appendChild(d);
-      }
-      document.body.appendChild(measure);
-      const heights = divs.map(d => d.offsetHeight);
-      document.body.removeChild(measure);
-      lineHeights = heights;
-    });
+  /** Build per-line <div> elements in a DocumentFragment for the ghost div. */
+  function buildGhostChildren(text: string): DocumentFragment {
+    const lines = text.split('\n');
+    const frag = document.createDocumentFragment();
+    for (const line of lines) {
+      const d = document.createElement('div');
+      d.textContent = line || '\u00A0';
+      frag.appendChild(d);
+    }
+    // Trailing empty div to match old content + '\n' behavior
+    const trailing = document.createElement('div');
+    trailing.textContent = '\u00A0';
+    frag.appendChild(trailing);
+    return frag;
+  }
+
+  /** Read line heights from ghost div children (for line numbers). */
+  function readLineHeightsFromGhost() {
+    if (!ghostEl || !ghostEl.children.length) { lineHeights = []; return; }
+    const heights: number[] = [];
+    // Exclude the trailing extra div
+    const count = ghostEl.children.length - 1;
+    for (let i = 0; i < count; i++) {
+      heights.push((ghostEl.children[i] as HTMLElement).offsetHeight);
+    }
+    lineHeights = heights;
   }
 
   // ── Ghost div sync (decoupled from Svelte reactivity) ──
   // The ghost div mirrors textarea content for CSS grid auto-sizing.
-  // Instead of using a reactive Svelte expression (which replaces the entire
-  // text node on every keystroke), we update the ghost div directly via DOM
-  // manipulation, throttled by requestAnimationFrame to batch rapid changes.
+  // Uses per-line <div> elements so we can read offsetTop/offsetHeight
+  // for accurate current-line highlight positioning.
   let ghostRaf: number | null = null;
 
   function syncGhost() {
     if (!ghostEl) return;
     if (ghostRaf !== null) return; // already scheduled
     ghostRaf = requestAnimationFrame(() => {
-      if (ghostEl) ghostEl.textContent = content + '\n';
+      if (!ghostEl) return;
+      ghostEl.replaceChildren(buildGhostChildren(content));
       ghostRaf = null;
+      // DOM is now updated — read real positions
+      readLineHeightsFromGhost();
+      updateCurrentLine();
     });
   }
 
   // Sync ghost on mount and whenever content changes from outside (e.g. search-replace)
+  // syncGhost() now handles both line heights and current line highlight.
   $effect(() => {
     // Read `content` to establish dependency
     void content;
     syncGhost();
-    computeLineHeights();
   });
 
   // Debounce store updates to avoid multiple synchronous subscriber cascades per keystroke.
@@ -251,10 +277,91 @@
     handleInput();
   }
 
+  /** Set highlight line from external source (e.g. visual editor in split mode).
+   *  Only updates the line highlight background, not the custom caret. */
+  export function setHighlightLine(lineIndex: number) {
+    if (!ghostEl || !ghostEl.children.length) return;
+    if (lineIndex < 0 || lineIndex >= ghostEl.children.length - 1) return;
+    currentLineIndex = lineIndex;
+    const lineDiv = ghostEl.children[lineIndex] as HTMLElement | undefined;
+    if (lineDiv) {
+      currentLineTop = lineDiv.offsetTop;
+      currentLineHeight = lineDiv.offsetHeight;
+    }
+  }
+
+  /** Update current line highlight + custom caret position from ghost div DOM. */
+  function updateCurrentLine() {
+    if (!textareaEl || !ghostEl || !ghostEl.children.length) return;
+    const cursorPos = textareaEl.selectionStart;
+    const selEnd = textareaEl.selectionEnd;
+    const beforeCursor = content.substring(0, cursorPos);
+    const lineIndex = beforeCursor.split('\n').length - 1;
+
+    currentLineIndex = lineIndex;
+
+    // Read actual rendered position from ghost div children
+    const lineDiv = ghostEl.children[lineIndex] as HTMLElement | undefined;
+    if (lineDiv) {
+      currentLineTop = lineDiv.offsetTop;
+      currentLineHeight = lineDiv.offsetHeight;
+    }
+
+    // Hide custom caret when there is a selection or textarea is not focused
+    if (cursorPos !== selEnd || document.activeElement !== textareaEl) {
+      showCustomCaret = false;
+      return;
+    }
+    showCustomCaret = true;
+
+    // Measure caret X/Y by inserting a marker span in the ghost line div
+    if (!lineDiv) return;
+    const lineStartPos = beforeCursor.lastIndexOf('\n') + 1;
+    const colOffset = cursorPos - lineStartPos;
+    const lineText = lineDiv.textContent || '';
+    const beforeText = lineText.substring(0, colOffset);
+    const afterText = lineText.substring(colOffset);
+
+    // Build: textNode + marker + textNode
+    const marker = document.createElement('span');
+    const frag = document.createDocumentFragment();
+    if (beforeText) frag.appendChild(document.createTextNode(beforeText));
+    frag.appendChild(marker);
+    frag.appendChild(document.createTextNode(afterText || '\u00A0'));
+
+    lineDiv.textContent = '';
+    lineDiv.appendChild(frag);
+
+    // X from marker, Y from line div top (marker.offsetTop includes baseline offset)
+    caretX = marker.offsetLeft;
+    caretY = lineDiv.offsetTop;
+    caretH = 25; // fixed = line-height, consistent on all lines
+
+    // Restore original line content
+    lineDiv.textContent = lineText || '\u00A0';
+
+    // Restart blink animation
+    caretKey++;
+  }
+
   function handleKeydown(event: KeyboardEvent) {
+    const textarea = event.target as HTMLTextAreaElement;
+
+    // Shift+Enter: insert hard break (two spaces + newline)
+    if (event.shiftKey && event.key === 'Enter') {
+      event.preventDefault();
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const hardbreak = '  \n';
+      content = content.substring(0, start) + hardbreak + content.substring(end);
+      requestAnimationFrame(() => {
+        textarea.selectionStart = textarea.selectionEnd = start + hardbreak.length;
+      });
+      return;
+    }
+
     if (event.key === 'Tab') {
       event.preventDefault();
-      const textarea = event.target as HTMLTextAreaElement;
       const start = textarea.selectionStart;
       const end = textarea.selectionEnd;
       const spaces = ' '.repeat(tabSize);
@@ -269,12 +376,17 @@
   let resizeObserver: ResizeObserver | null = null;
 
   onMount(() => {
-    // Initialize ghost div content synchronously on mount
-    if (ghostEl) ghostEl.textContent = content + '\n';
+    // Initialize ghost div with per-line structure synchronously on mount
+    if (ghostEl) ghostEl.replaceChildren(buildGhostChildren(content));
     if (showOutline) extractHeadingsFromMarkdown();
 
     if (textareaEl) {
-      resizeObserver = new ResizeObserver(() => computeLineHeights());
+      resizeObserver = new ResizeObserver(() => {
+        requestAnimationFrame(() => {
+          readLineHeightsFromGhost();
+          updateCurrentLine();
+        });
+      });
       resizeObserver.observe(textareaEl);
       // Disable macOS smart quotes/dashes in the source editor textarea
       textareaEl.setAttribute('autocorrect', 'off');
@@ -286,6 +398,23 @@
       // preventScroll avoids the browser auto-scrolling to the caret position,
       // which uses the imprecise cursor offset and causes a jarring jump.
       textareaEl.focus({ preventScroll: true });
+      // Initialize current line highlight and line heights from ghost DOM
+      requestAnimationFrame(() => {
+        readLineHeightsFromGhost();
+        updateCurrentLine();
+      });
+
+      // Listen for selectionchange to track ALL cursor movement
+      // (arrow keys, click, shift+arrow, home/end, etc.)
+      const handleSelectionChange = () => {
+        if (document.activeElement === textareaEl) {
+          updateCurrentLine();
+        } else {
+          showCustomCaret = false;
+        }
+      };
+      document.addEventListener('selectionchange', handleSelectionChange);
+      selectionChangeCleanup = () => document.removeEventListener('selectionchange', handleSelectionChange);
 
       const outer = textareaEl.closest('.source-editor-outer') as HTMLElement | null;
       if (offset === 0 && scrollFraction === 0) {
@@ -322,10 +451,8 @@
     if (ghostRaf !== null) {
       cancelAnimationFrame(ghostRaf);
     }
-    if (lineHeightRaf !== null) {
-      cancelAnimationFrame(lineHeightRaf);
-    }
     resizeObserver?.disconnect();
+    selectionChangeCleanup?.();
     if (outlineTimer) clearTimeout(outlineTimer);
     if (scrollRafOutline) cancelAnimationFrame(scrollRafOutline);
     clearTimeout(newlineTimer);
@@ -499,6 +626,12 @@
     {/if}
     <div class="textarea-grow" style="tab-size: {tabSize}">
       <div bind:this={ghostEl} class="textarea-ghost" aria-hidden="true"></div>
+      <div class="current-line-highlight" style="top: {currentLineTop}px; height: {currentLineHeight}px;" aria-hidden="true"></div>
+      {#if showCustomCaret}
+        {#key caretKey}
+          <div class="custom-caret" style="left: {caretX}px; top: {caretY}px; height: {caretH}px;" aria-hidden="true"></div>
+        {/key}
+      {/if}
       <textarea
         bind:this={textareaEl}
         class="source-textarea"
@@ -559,7 +692,7 @@
     user-select: none;
     font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
     font-size: var(--font-size-sm);
-    line-height: 1.6;
+    line-height: 25px;
     color: var(--text-muted);
     border-right: 1px solid var(--border-light);
     margin-right: 0.75rem;
@@ -583,25 +716,50 @@
     grid-template-columns: minmax(0, 1fr);
     min-width: 0;
     overflow: hidden;
+    position: relative;
   }
 
   .textarea-ghost,
   .source-textarea {
     grid-area: 1 / 1;
     font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
-    font-size: var(--font-size-sm);
-    line-height: 1.6;
+    font-size: 15px;
+    line-height: 25px;
     white-space: pre-wrap;
     word-wrap: break-word;
     overflow-wrap: break-word;
     padding: 0;
     border: none;
     margin: 0;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
 
   .textarea-ghost {
     visibility: hidden;
     pointer-events: none;
+  }
+
+  .current-line-highlight {
+    position: absolute;
+    left: 0;
+    right: 0;
+    width: 100%;
+    background: rgba(128, 128, 128, 0.15);
+    pointer-events: none;
+  }
+
+  .custom-caret {
+    position: absolute;
+    width: 2px;
+    background: #0066cc;
+    pointer-events: none;
+    animation: source-caret-blink 1s step-end infinite;
+  }
+
+  @keyframes source-caret-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
   }
 
   .source-textarea {
@@ -611,6 +769,13 @@
     background: transparent;
     color: var(--text-primary);
     overflow: hidden;
+    vertical-align: top;
+    /* Hide native caret — replaced by .custom-caret for consistent height */
+    caret-color: transparent;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    box-sizing: border-box;
   }
 
   .source-textarea::placeholder {

@@ -545,10 +545,9 @@ const hardbreak: NodeSpec = {
     },
   ],
   toDOM(node) {
-    if (node.attrs.isInline) {
-      return ['span', { 'data-type': 'hardbreak', 'data-is-inline': 'true' }, ' '];
-    }
-    return ['br', { 'data-type': 'hardbreak' }];
+    // Always render as span with newline to maintain consistent cursor size
+    // The 'leafText()' below ensures it serializes correctly to markdown
+    return ['span', { 'data-type': 'hardbreak', 'class': 'hardbreak-marker' }, '\n'];
   },
   leafText() { return '\n'; },
 };
