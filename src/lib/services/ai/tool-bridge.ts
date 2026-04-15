@@ -18,6 +18,35 @@ export function mcpToolsToToolDefs(tools: MCPTool[]): ToolDefinition[] {
   }));
 }
 
+const GEMINI_UNSUPPORTED_KEYS = new Set([
+  'additionalProperties',
+  '$schema',
+  '$id',
+  '$ref',
+  '$defs',
+  'definitions',
+  'patternProperties',
+  'unevaluatedProperties',
+  'dependentRequired',
+  'dependentSchemas',
+  'const',
+]);
+
+function sanitizeGeminiSchema(schema: unknown): unknown {
+  if (Array.isArray(schema)) {
+    return schema.map(sanitizeGeminiSchema);
+  }
+  if (schema && typeof schema === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(schema as Record<string, unknown>)) {
+      if (GEMINI_UNSUPPORTED_KEYS.has(key)) continue;
+      out[key] = sanitizeGeminiSchema(value);
+    }
+    return out;
+  }
+  return schema;
+}
+
 /**
  * Format tools into the provider-specific request body fields.
  * Returns partial body object to merge into the API request.
@@ -62,12 +91,14 @@ export function formatToolsForProvider(
 
     case 'gemini':
       // Gemini: { tools: [{ functionDeclarations: [...] }] }
+      // Gemini's schema is an OpenAPI 3.0 subset and rejects JSON Schema fields
+      // like additionalProperties / $schema / $id / $ref — strip them recursively.
       return {
         tools: [{
           functionDeclarations: tools.map(t => ({
             name: t.name,
             description: t.description,
-            parameters: t.input_schema,
+            parameters: sanitizeGeminiSchema(t.input_schema),
           })),
         }],
       };
