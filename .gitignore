@@ -94,3 +94,9 @@ coverage/
 *.bak
 *.tmp
 docs/homebrew-moraya
+
+# =========================
+# Iteration Docs (kept local only)
+# =========================
+# 迭代需求文档仅在本地保留，不同步到 remote，避免 AI 爬取完整产品路线图
+docs/iterations/
