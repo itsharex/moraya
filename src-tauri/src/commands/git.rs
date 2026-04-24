@@ -792,8 +792,9 @@ mod tests {
     fn test_validate_git_url() {
         assert!(validate_git_url("https://github.com/user/repo.git").is_ok());
         assert!(validate_git_url("git://example.com/repo.git").is_ok());
+        assert!(validate_git_url("git@github.com:user/repo.git").is_ok());
+        assert!(validate_git_url("ssh://git@github.com/repo").is_ok());
         assert!(validate_git_url("http://insecure.com/repo").is_err());
-        assert!(validate_git_url("ssh://git@github.com/repo").is_err());
         assert!(validate_git_url("file:///local/repo").is_err());
     }
 }
