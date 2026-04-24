@@ -5,6 +5,7 @@
   let {
     position,
     hasImages = false,
+    hasSelection = false,
     onCut,
     onCopy,
     onPaste,
@@ -12,10 +13,12 @@
     onSEO,
     onImageGen,
     onPublish,
+    onAddReview,
     onClose,
   }: {
     position: { top: number; left: number };
     hasImages?: boolean;
+    hasSelection?: boolean;
     onCut: () => void;
     onCopy: () => void;
     onPaste: () => void;
@@ -23,6 +26,7 @@
     onSEO: () => void;
     onImageGen: () => void;
     onPublish: () => void;
+    onAddReview?: () => void;
     onClose: () => void;
   } = $props();
 
@@ -75,6 +79,18 @@
       <span>{$t('contextMenu.paste')}</span>
       <span class="shortcut">{modKey}V</span>
     </button>
+
+    {#if onAddReview}
+      <div class="menu-divider"></div>
+      <button
+        class="menu-item"
+        disabled={!hasSelection}
+        onclick={() => { if (onAddReview) handleAction(onAddReview); }}
+      >
+        <span>{$t('review.addReview')}</span>
+        <span class="shortcut">⌘⇧R</span>
+      </button>
+    {/if}
 
     <div class="menu-divider"></div>
 

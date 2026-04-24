@@ -335,9 +335,11 @@
     lineDiv.textContent = '';
     lineDiv.appendChild(frag);
 
-    // X from marker, Y from line div top (marker.offsetTop includes baseline offset)
+    // X/Y from marker: marker.offsetTop reflects its actual visual row after soft-wrap,
+    // so long lines (URLs etc.) that wrap to multiple rows render the caret on the
+    // correct wrapped row instead of always at the top of the logical line.
     caretX = marker.offsetLeft;
-    caretY = lineDiv.offsetTop;
+    caretY = marker.offsetTop;
     caretH = 25; // fixed = line-height, consistent on all lines
 
     // Restore original line content

@@ -18,11 +18,25 @@ export interface FilePreview {
 
 export type SidebarViewMode = 'tree' | 'list';
 
+export type GitAuthMethod = 'token' | 'password' | 'ssh';
+
+export interface KnowledgeBaseGit {
+  remoteUrl: string;
+  configId: string;
+  branch: string;
+  autoCommit: boolean;
+  autoSync: boolean;
+  syncIntervalMin: number;
+  lastSyncAt: number;
+  authMethod?: GitAuthMethod;
+}
+
 export interface KnowledgeBase {
   id: string;
   name: string;
   path: string;
   lastAccessedAt: number;
+  git?: KnowledgeBaseGit;
 }
 
 interface FilesState {
@@ -159,6 +173,16 @@ function createFilesStore() {
       update(state => {
         const kbs = state.knowledgeBases.map(kb =>
           kb.id === id ? { ...kb, name } : kb
+        );
+        persistKnowledgeBases(kbs);
+        return { ...state, knowledgeBases: kbs };
+      });
+    },
+
+    updateKnowledgeBase(id: string, patch: Partial<KnowledgeBase>) {
+      update(state => {
+        const kbs = state.knowledgeBases.map(kb =>
+          kb.id === id ? { ...kb, ...patch } : kb
         );
         persistKnowledgeBases(kbs);
         return { ...state, knowledgeBases: kbs };

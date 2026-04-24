@@ -27,6 +27,7 @@ import { createEditorPropsPlugin } from './plugins/editor-props-plugin';
 import { createCursorSyntaxPlugin } from './plugins/cursor-syntax';
 import { createLinkTextPlugin } from './plugins/link-text-plugin';
 import { createInlineCodeConvertPlugin } from './plugins/inline-code-convert';
+import { createReviewDecorationPlugin } from './plugins/review-decoration';
 
 // ── Tier 1: Enhancement plugins (dynamic imports, loaded in parallel) ──
 
@@ -652,6 +653,9 @@ export async function createEditor(options: EditorOptions): Promise<MorayaEditor
 
     // Image selection highlight (blue overlay when images are within a range selection)
     createImageSelectionPlugin(),
+
+    // Review anchor highlight decorations
+    createReviewDecorationPlugin(),
   ];
 
   // Change detection

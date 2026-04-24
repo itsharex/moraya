@@ -67,6 +67,7 @@
     onWorkflowPublish,
     onCursorLineChange,
     onForceShowAIPanel,
+    onAddReview,
   }: {
     content?: string;
     showOutline?: boolean;
@@ -80,6 +81,8 @@
     onWorkflowPublish?: () => void;
     onCursorLineChange?: (lineIndex: number) => void;
     onForceShowAIPanel?: () => void;
+    /** Called when the user wants to add a review comment on the selected text. */
+    onAddReview?: (selectedText: string, contextBefore: string, contextAfter: string) => void;
   } = $props();
 
   let editorLineWidth = $state(settingsStore.getState().editorLineWidth);
@@ -368,6 +371,7 @@
   // Editor context menu (workflow items + clipboard)
   let showEditorContextMenu = $state(false);
   let editorContextMenuPosition = $state({ top: 0, left: 0 });
+  let editorContextMenuHasSelection = $state(false);
   let pluginInvokingId = $state<string | null>(null);
 
   // Image click toolbar state
@@ -684,7 +688,7 @@
         }
       });
       if (tr.docChanged) {
-        const shortName = imageSrc.split('/').pop() || 'image';
+        const shortName = imageSrc.split('?')[0].split('#')[0].split('/').pop() || 'image';
         view.dispatch(tr);
         onForceShowAIPanel?.();
         aiStore.addMessage({
@@ -697,7 +701,7 @@
     } catch (e) {
       console.warn('[Image] uploadAndReplace failed:', e);
       const errMsg = e instanceof Error ? e.message : String(e);
-      const shortName = imageSrc.split('/').pop() || 'image';
+      const shortName = imageSrc.split('?')[0].split('#')[0].split('/').pop() || 'image';
       onForceShowAIPanel?.();
       aiStore.addMessage({
         role: 'assistant',
@@ -872,6 +876,7 @@
       event.preventDefault();
       event.stopPropagation();
       editorContextMenuPosition = { top: event.clientY, left: event.clientX };
+      editorContextMenuHasSelection = !!(editor && !editor.view.state.selection.empty);
       showEditorContextMenu = true;
       return;
     }
@@ -1002,12 +1007,19 @@
     const seen = new Set<string>();
     const imageList: ImageEntry[] = [];
 
+    // Display-friendly filename from a src (strips query/fragment so base64 `/` in
+    // OSS signatures doesn't leak into the "filename" shown in upload messages).
+    const filenameOf = (src: string): string => {
+      const path = src.split('?')[0].split('#')[0];
+      return path.split('/').pop() || 'image';
+    };
+
     view.state.doc.descendants((node) => {
       if (node.type.name === 'image') {
         const src = node.attrs.src as string;
         if (src && !seen.has(src)) {
           seen.add(src);
-          imageList.push({ src, name: src.split('/').pop() || 'image', type: 'markdown' });
+          imageList.push({ src, name: filenameOf(src), type: 'markdown' });
         }
       }
       if (node.type.name === 'html_inline') {
@@ -1016,7 +1028,7 @@
           const m = val.match(/src=["']([^"']+)["']/i);
           if (m && !seen.has(m[1])) {
             seen.add(m[1]);
-            imageList.push({ src: m[1], name: m[1].split('/').pop() || 'image', type: 'html_inline' });
+            imageList.push({ src: m[1], name: filenameOf(m[1]), type: 'html_inline' });
           }
         }
       }
@@ -1027,7 +1039,7 @@
         while ((match = imgRegex.exec(html)) !== null) {
           if (!seen.has(match[1])) {
             seen.add(match[1]);
-            imageList.push({ src: match[1], name: match[1].split('/').pop() || 'image', type: 'html_block' });
+            imageList.push({ src: match[1], name: filenameOf(match[1]), type: 'html_block' });
           }
         }
       }
@@ -2532,6 +2544,7 @@
   <EditorContextMenu
     position={editorContextMenuPosition}
     hasImages={hasDocumentImages()}
+    hasSelection={editorContextMenuHasSelection}
     onCut={() => { document.execCommand('cut'); }}
     onCopy={() => { document.execCommand('copy'); }}
     onPaste={async () => {
@@ -2549,6 +2562,16 @@
     onSEO={() => { onWorkflowSEO?.(); }}
     onImageGen={() => { onWorkflowImageGen?.(); }}
     onPublish={() => { onWorkflowPublish?.(); }}
+    onAddReview={onAddReview ? () => {
+      if (!editor) return;
+      const { from, to } = editor.view.state.selection;
+      if (from === to) return;
+      const docText = editor.view.state.doc.textContent;
+      const selectedText = editor.view.state.doc.textBetween(from, to, ' ');
+      const contextBefore = docText.slice(Math.max(0, from - 51), from);
+      const contextAfter = docText.slice(to, to + 50);
+      onAddReview(selectedText, contextBefore, contextAfter);
+    } : undefined}
     onClose={() => showEditorContextMenu = false}
   />
 {/if}

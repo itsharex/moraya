@@ -28,6 +28,11 @@
   } = $props();
 
   let dragging = $state(false);
+  let hoverVisible = $state(false);
+  let hoverTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function onHandleEnter() { hoverTimer = setTimeout(() => { hoverVisible = true; }, 1000); }
+  function onHandleLeave() { clearTimeout(hoverTimer); hoverVisible = false; }
 
   function onPointerDown(e: PointerEvent) {
     e.preventDefault();
@@ -83,7 +88,7 @@
       {/each}
     {/if}
   </nav>
-  <div class="resize-handle" onpointerdown={onPointerDown}></div>
+  <div class="resize-handle" class:hover-visible={hoverVisible} onpointerdown={onPointerDown} onpointerenter={onHandleEnter} onpointerleave={onHandleLeave}></div>
 </div>
 
 <style>
@@ -158,7 +163,7 @@
     z-index: 1;
   }
 
-  .resize-handle:hover,
+  .resize-handle.hover-visible,
   .dragging .resize-handle {
     background: var(--accent-color);
     opacity: 0.4;

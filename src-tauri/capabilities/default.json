@@ -62,6 +62,7 @@
     },
     "global-shortcut:allow-register",
     "global-shortcut:allow-unregister",
+    "deep-link:default",
     {
       "identifier": "http:default",
       "allow": [

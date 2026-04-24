@@ -1,6 +1,6 @@
 [package]
 name = "moraya"
-version = "0.29.0"
+version = "0.34.0"
 description = "A minimal, AI-ready Markdown editor"
 authors = ["Moraya Contributors"]
 edition = "2021"
@@ -48,6 +48,9 @@ flate2 = "1"
 tar = "0.4"
 open = "5"
 tauri-plugin-global-shortcut = "2"
+tauri-plugin-deep-link = "2"
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
+url = "2"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

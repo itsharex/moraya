@@ -801,12 +801,31 @@ export async function generateImagePrompts(
   style: ImageStyle = 'auto',
   mode: ImageGenMode = 'article',
 ): Promise<ImagePrompt[]> {
-  const truncated = articleContent.slice(0, 6000);
+  // Distribute targets across the FULL article so images spread over the
+  // entire document. Prior behavior truncated to 6000 chars first, which
+  // made targets fall only within the article's first section → images
+  // clustered at the top of long articles.
+  const totalParagraphs = countParagraphs(articleContent);
 
-  // Analyze article structure and compute ideal insertion positions
-  const totalParagraphs = countParagraphs(truncated);
-  const idealTargets = computeEvenTargets(count, totalParagraphs);
-  const markedContent = addParagraphMarkers(truncated);
+  // Mark paragraphs on the full article first so [P_] indices match the
+  // target distribution, THEN truncate if needed.
+  const fullyMarked = addParagraphMarkers(articleContent);
+  const MAX_CONTEXT = 24000;
+  let markedContent: string;
+  let visibleMaxParaIdx: number;
+  if (fullyMarked.length <= MAX_CONTEXT) {
+    markedContent = fullyMarked;
+    visibleMaxParaIdx = totalParagraphs - 1;
+  } else {
+    markedContent = fullyMarked.slice(0, MAX_CONTEXT);
+    // Highest [P_] marker still visible after truncation — targets beyond
+    // this point would reference paragraphs the AI cannot see.
+    const markerMatches = markedContent.match(/\[P(\d+)\]/g) || [];
+    const last = markerMatches[markerMatches.length - 1];
+    visibleMaxParaIdx = last ? parseInt(last.match(/\d+/)![0], 10) : 0;
+  }
+  // Clamp to visible paragraphs so AI can actually describe each target
+  const idealTargets = computeEvenTargets(count, visibleMaxParaIdx + 1);
 
   const styleDesc = style !== 'auto' ? STYLE_PROMPT_SUFFIXES[style] : undefined;
   const styleHint = style === 'auto'
@@ -815,11 +834,11 @@ export async function generateImagePrompts(
 
   // Build distribution guidance so AI generates prompts for different parts of the article
   let distributionHint = '';
-  if (totalParagraphs > 0 && idealTargets.length > 0) {
+  if (idealTargets.length > 0) {
     const segmentDescs = idealTargets
       .map((t, i) => `Image ${i + 1}: focus on content near [P${t}]`)
       .join('; ');
-    distributionHint = `\n\nIMPORTANT DISTRIBUTION RULE: The article has ${totalParagraphs} paragraphs (marked [P0] to [P${totalParagraphs - 1}]). You MUST spread ${count} images evenly across the ENTIRE article. Assign these targets: ${segmentDescs}. Each image prompt should describe the content near its assigned target paragraph. Do NOT cluster images at the beginning or any single section.`;
+    distributionHint = `\n\nIMPORTANT DISTRIBUTION RULE: The content below contains paragraphs marked [P0] to [P${visibleMaxParaIdx}]. You MUST spread ${count} images evenly across the ENTIRE content. Assign these targets: ${segmentDescs}. Each image prompt should describe the content near its assigned target paragraph. Do NOT cluster images at the beginning or any single section.`;
   }
 
   const systemPrompt = MODE_SYSTEM_PROMPTS[mode];

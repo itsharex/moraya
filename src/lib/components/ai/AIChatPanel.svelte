@@ -302,6 +302,11 @@
       : defaultPanelWidth()
   );
   let isResizing = $state(false);
+  let resizeHoverVisible = $state(false);
+  let resizeHoverTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function onResizeHandleEnter() { resizeHoverTimer = setTimeout(() => { resizeHoverVisible = true; }, 1000); }
+  function onResizeHandleLeave() { clearTimeout(resizeHoverTimer); resizeHoverVisible = false; }
 
   let resizeRafId: number | undefined;
 
@@ -1562,7 +1567,7 @@
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="ai-panel no-select" class:resizing={isResizing} style="width:{panelWidth}px">
-  <div class="resize-handle" onmousedown={handleResizeStart}>
+  <div class="resize-handle" class:hover-visible={resizeHoverVisible} onmousedown={handleResizeStart} onmouseenter={onResizeHandleEnter} onmouseleave={onResizeHandleLeave}>
     {#if isResizing}
       <span class="width-indicator">{panelWidth}</span>
     {/if}
@@ -2213,7 +2218,7 @@
     transition: background var(--transition-fast);
   }
 
-  .resize-handle:hover,
+  .resize-handle.hover-visible,
   .ai-panel.resizing .resize-handle {
     background: var(--accent-color);
   }

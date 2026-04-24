@@ -36,6 +36,10 @@ pub struct PendingTabData(pub Mutex<HashMap<String, TabTransferData>>);
 /// Used to distinguish cold-start file association from runtime file opens.
 pub struct MainWindowReady(pub AtomicBool);
 
+/// Holds a pending Picora deep-link payload received before the frontend is ready.
+/// Frontend drains this via `take_pending_picora_import` once the import dialog is mounted.
+pub struct PendingPicoraImport(pub Mutex<Option<serde_json::Value>>);
+
 /// Atomic counter for generating unique window labels.
 static WINDOW_COUNTER: AtomicU32 = AtomicU32::new(0);
 
@@ -494,6 +498,123 @@ fn register_dock_document(
 #[tauri::command]
 fn register_dock_document(_display_name: String, _file_path: Option<String>) {}
 
+/// Parse a `moraya://import-image-host?...` URL into a JSON payload understood
+/// by the frontend `picora-import-request` listener. Returns `None` for any
+/// scheme/host combination we don't recognise so we never accidentally surface
+/// untrusted data.
+fn parse_picora_deeplink(raw: &str) -> Option<serde_json::Value> {
+    let parsed = url::Url::parse(raw).ok()?;
+    if parsed.scheme() != "moraya" {
+        return None;
+    }
+    if parsed.host_str() != Some("import-image-host") {
+        return None;
+    }
+    let mut version: Option<String> = None;
+    let mut ott: Option<String> = None;
+    let mut key: Option<String> = None;
+    let mut name: Option<String> = None;
+    let mut api_base: Option<String> = None;
+    for (k, v) in parsed.query_pairs() {
+        match k.as_ref() {
+            "v" => version = Some(v.into_owned()),
+            "ott" => ott = Some(v.into_owned()),
+            "key" => key = Some(v.into_owned()),
+            "name" => name = Some(v.into_owned()),
+            "apiBase" | "api_base" => api_base = Some(v.into_owned()),
+            _ => {}
+        }
+    }
+    let mut payload = serde_json::Map::new();
+    if let Some(v) = version { payload.insert("version".to_string(), serde_json::Value::String(v)); }
+    if let Some(o) = ott { payload.insert("ott".to_string(), serde_json::Value::String(o)); }
+    if let Some(k) = key { payload.insert("key".to_string(), serde_json::Value::String(k)); }
+    if let Some(n) = name { payload.insert("name".to_string(), serde_json::Value::String(n)); }
+    if let Some(b) = api_base { payload.insert("apiBase".to_string(), serde_json::Value::String(b)); }
+    if payload.is_empty() {
+        return None;
+    }
+    Some(serde_json::Value::Object(payload))
+}
+
+/// Dispatch a deep-link URL: parse it, then either emit `picora-import-request`
+/// to the main window (if the frontend is ready) or buffer it for later pickup.
+fn handle_picora_deeplink(app: &tauri::AppHandle, raw_url: &str) {
+    let Some(payload) = parse_picora_deeplink(raw_url) else { return; };
+
+    let main_ready = app
+        .try_state::<MainWindowReady>()
+        .map(|s| s.0.load(Ordering::SeqCst))
+        .unwrap_or(false);
+
+    if main_ready {
+        let _ = app.emit("picora-import-request", payload.clone());
+    }
+
+    if let Some(pending) = app.try_state::<PendingPicoraImport>() {
+        if let Ok(mut guard) = pending.0.lock() {
+            *guard = Some(payload);
+        }
+    }
+
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+/// Frontend pulls any deep-link payload buffered before it was ready.
+#[tauri::command]
+fn take_pending_picora_import(
+    state: tauri::State<'_, PendingPicoraImport>,
+) -> Option<serde_json::Value> {
+    state.0.lock().ok().and_then(|mut g| g.take())
+}
+
+#[cfg(test)]
+mod deeplink_tests {
+    use super::parse_picora_deeplink;
+
+    #[test]
+    fn rejects_unrelated_schemes() {
+        assert!(parse_picora_deeplink("file:///tmp/foo.md").is_none());
+        assert!(parse_picora_deeplink("https://example.com").is_none());
+        assert!(parse_picora_deeplink("moraya://other-host?key=x").is_none());
+    }
+
+    #[test]
+    fn parses_v1_key_payload() {
+        let v = parse_picora_deeplink("moraya://import-image-host?key=sk_live_abc&name=My&v=1")
+            .expect("should parse");
+        assert_eq!(v["key"], "sk_live_abc");
+        assert_eq!(v["name"], "My");
+        assert_eq!(v["version"], "1");
+    }
+
+    #[test]
+    fn parses_v2_ott_payload() {
+        let v = parse_picora_deeplink("moraya://import-image-host?ott=ott_xyz&v=2")
+            .expect("should parse");
+        assert_eq!(v["ott"], "ott_xyz");
+        assert_eq!(v["version"], "2");
+        assert!(v.get("key").is_none());
+    }
+
+    #[test]
+    fn rejects_empty_query() {
+        assert!(parse_picora_deeplink("moraya://import-image-host").is_none());
+        assert!(parse_picora_deeplink("moraya://import-image-host?").is_none());
+    }
+
+    #[test]
+    fn ignores_unknown_query_keys() {
+        let v = parse_picora_deeplink("moraya://import-image-host?key=k&surprise=evil")
+            .expect("should parse");
+        assert_eq!(v["key"], "k");
+        assert!(v.get("surprise").is_none());
+    }
+}
+
 /// Extract file paths from CLI arguments (used on Windows where file association
 /// spawns a new process with the file path as an argument).
 fn file_paths_from_args() -> Vec<String> {
@@ -517,6 +638,23 @@ pub fn run() {
     let initial_files = file_paths_from_args();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            // A second instance was launched. If it carries a moraya:// URL on
+            // its argv (Windows/Linux deep-link delivery path), extract and
+            // forward it to the primary instance.
+            for arg in args.iter().skip(1) {
+                if arg.starts_with("moraya://") {
+                    handle_picora_deeplink(app, arg);
+                }
+            }
+            // Always raise the main window — that's the user expectation when
+            // they launch the app a second time.
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::new().build())
@@ -541,6 +679,7 @@ pub fn run() {
         .manage(PendingFiles(Mutex::new(HashMap::new())))
         .manage(PendingTabData(Mutex::new(HashMap::new())))
         .manage(MainWindowReady(AtomicBool::new(false)))
+        .manage(PendingPicoraImport(Mutex::new(None)))
         .manage(DockDocumentTracker(Mutex::new(HashMap::new())))
         .invoke_handler(tauri::generate_handler![
             commands::file::read_file,
@@ -583,6 +722,10 @@ pub fn run() {
             commands::update::exit_app,
             commands::update::download_update,
             commands::object_storage::upload_to_object_storage,
+            commands::image_hosting_picora::upload_to_picora,
+            commands::image_hosting_picora::verify_picora_token,
+            commands::image_hosting_picora::exchange_picora_export_token,
+            take_pending_picora_import,
             commands::speech_proxy::speech_proxy_start,
             commands::speech_proxy::speech_proxy_send_audio,
             commands::speech_proxy::speech_proxy_stop,
@@ -603,6 +746,18 @@ pub fn run() {
             commands::plugin_manager::plugin_fetch_github_asset,
             commands::plugin_manager::download_renderer_plugin,
             commands::plugin_manager::delete_renderer_plugin,
+            commands::git::git_check_installed,
+            commands::git::git_clone,
+            commands::git::git_init_and_push,
+            commands::git::git_pull,
+            commands::git::git_push,
+            commands::git::git_status,
+            commands::git::git_log,
+            commands::git::git_diff,
+            commands::git::git_add_commit,
+            commands::git::git_get_user_info,
+            commands::git::git_sync_status,
+            commands::git::git_head_commit,
             set_editor_mode_menu,
             update_menu_labels,
             set_menu_check,
@@ -630,6 +785,26 @@ pub fn run() {
                     let state = app_handle.state::<commands::ai_proxy::AIProxyState>();
                     state.ensure_secrets_loaded().await;
                 });
+            }
+
+            // Wire moraya:// deep-link delivery. Three entry points:
+            //   1. Cold start via OS scheme association → on_open_url callback
+            //   2. Cold start via CLI argv (Linux) → handled via single_instance plugin
+            //   3. Runtime open from another app → on_open_url callback
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                let app_handle = app.handle().clone();
+                app.deep_link().on_open_url(move |event| {
+                    for url in event.urls() {
+                        handle_picora_deeplink(&app_handle, url.as_str());
+                    }
+                });
+                // Also drain any URL the OS handed us at startup (macOS/Windows path).
+                if let Ok(Some(urls)) = app.deep_link().get_current() {
+                    for url in urls {
+                        handle_picora_deeplink(app.handle(), url.as_str());
+                    }
+                }
             }
 
             let window = app.get_webview_window("main").unwrap();

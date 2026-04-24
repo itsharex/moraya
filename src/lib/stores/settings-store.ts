@@ -350,6 +350,7 @@ export async function initSettingsStore() {
             apiToken: old.apiToken,
             customEndpoint: old.customEndpoint,
             customHeaders: old.customHeaders,
+            customUrlTemplate: (old as { customUrlTemplate?: string }).customUrlTemplate || '',
             autoUpload: old.autoUpload,
             githubRepoUrl: old.githubRepoUrl,
             githubBranch: old.githubBranch,
@@ -371,6 +372,10 @@ export async function initSettingsStore() {
             ossEndpoint: '',
             ossCdnDomain: '',
             ossPathPrefix: '',
+            picoraApiUrl: '',
+            picoraApiKey: '',
+            picoraImgDomain: '',
+            picoraUserEmail: '',
           };
           settingsStore.update({
             imageHostTargets: [migratedTarget],

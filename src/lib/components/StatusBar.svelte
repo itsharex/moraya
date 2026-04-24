@@ -3,11 +3,13 @@
   import { updateStore } from '$lib/services/update-service';
   import { t } from '$lib/i18n';
   import { isMacOS, isIPadOS } from '$lib/utils/platform';
+  import GitSyncStatus from './GitSyncStatus.svelte';
 
   let {
     onShowUpdateDialog,
     onToggleAI,
     onModeChange,
+    onGitSync,
     currentMode = 'visual' as EditorMode,
     aiPanelOpen = false,
     aiConfigured = false,
@@ -25,6 +27,7 @@
     onShowUpdateDialog?: () => void;
     onToggleAI?: () => void;
     onModeChange?: (mode: EditorMode) => void;
+    onGitSync?: () => void;
     currentMode?: EditorMode;
     aiPanelOpen?: boolean;
     aiConfigured?: boolean;
@@ -112,6 +115,9 @@
           </span>
         {/if}
       </span>
+    {/if}
+    {#if onGitSync}
+      <GitSyncStatus onSync={onGitSync} />
     {/if}
   </div>
   <div class="statusbar-right">

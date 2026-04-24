@@ -44,6 +44,10 @@
   let knowledgeBases = $state<KnowledgeBase[]>([]);
   let showKBManager = $state(false);
 
+  function openPicoraManualImport() {
+    window.dispatchEvent(new CustomEvent('moraya:picora-open-manual'));
+  }
+
   const lightThemes = getLightThemes();
   const darkThemes = getDarkThemes();
 
@@ -228,7 +232,9 @@
           <div class="tab-pane" class:active={activeTab === 'ai'}><AISettings /></div>
           <div class="tab-pane" class:active={activeTab === 'image-ai'}><ImageAISettings /></div>
         <div class="tab-pane" class:active={activeTab === 'mcp'}><MCPPanel /></div>
-        <div class="tab-pane" class:active={activeTab === 'image'}><ImageHostingSettings /></div>
+        <div class="tab-pane" class:active={activeTab === 'image'}>
+          <ImageHostingSettings onImportPicora={openPicoraManualImport} />
+        </div>
         <div class="tab-pane" class:active={activeTab === 'publish'}><PublishSettings /></div>
         <div class="tab-pane" class:active={activeTab === 'voice'}><VoiceSettings /></div>
         <div class="tab-pane" class:active={activeTab === 'knowledge-base'}><KBIndexSettings onOpenKBManager={() => showKBManager = true} /></div>

@@ -36,6 +36,7 @@
   import { filesStore, type FileEntry } from '$lib/stores/files-store';
   import { initAIStore, aiStore, sendChatMessage } from '$lib/services/ai';
   import { initMCPStore, connectAllServers, mcpStore } from '$lib/services/mcp';
+  import { reviewStore } from '$lib/services/review';
   import { initContainerManager } from '$lib/services/mcp/container-manager';
   import { preloadEnhancementPlugins } from '$lib/editor/setup';
   import { openFile, saveFile, saveFileAs, loadFile, getFileNameFromPath, readImageAsBlobUrl, migrateTempImages, isImageFile } from '$lib/services/file-service';
@@ -183,6 +184,11 @@ ${tr('welcome.tip')}
   let showSettings = $state(false);
   let settingsInitialTab = $state<'general' | 'ai' | 'voice'>('general');
   let showAIPanel = $state(false);
+  let showReviewPanel = $state(false);
+  let currentFileLock = $state<import('$lib/services/review/types').Lock | null>(null);
+  let selfName = $state('');
+  let selfEmail = $state('');
+  let reviewPanelRef = $state<import('$lib/components/ReviewPanel.svelte').default | undefined>();
   let showOutline = $state(false);
   let outlineWidth = $state(200);
   let showImageDialog = $state(false);
@@ -238,6 +244,55 @@ ${tr('welcome.tip')}
   let indexingPhase = $state('');
   let indexingCurrent = $state(0);
   let indexingTotal = $state(0);
+
+  // Git sync: determine if current KB has git binding
+  let gitBound = $state(false);
+  const unsubGitKB = filesStore.subscribe(state => {
+    const activeKb = state.knowledgeBases.find(k => k.id === state.activeKnowledgeBaseId);
+    gitBound = !!activeKb?.git;
+  });
+
+  async function handleGitSync() {
+    const state = filesStore.getState();
+    const kb = state.knowledgeBases.find(k => k.id === state.activeKnowledgeBaseId);
+    if (!kb?.git) return;
+    const { gitSync, gitSyncStatus, gitStore } = await import('$lib/services/git');
+    gitStore.setSyncing();
+    try {
+      await gitSync(kb.path, kb.git.configId);
+      const status = await gitSyncStatus(kb.path, kb.git.configId);
+      gitStore.setSyncResult(status.ahead, status.behind, status.branch);
+      // Refresh file tree after pull to show remote changes
+      const tree = await invoke<import('$lib/stores/files-store').FileEntry[]>('read_dir_recursive', {
+        path: kb.path,
+        depth: 3,
+        allFiles: filesStore.getState().sidebarViewMode === 'tree',
+      });
+      filesStore.setFileTree(tree);
+    } catch (e) {
+      gitStore.setError(String(e));
+    }
+  }
+
+  // Auto-sync timer: periodically sync git-bound KBs that have autoSync enabled
+  let autoSyncTimer: ReturnType<typeof setInterval> | null = null;
+
+  $effect(() => {
+    // Re-evaluate when gitBound changes (KB selection or git config change)
+    if (!gitBound) {
+      if (autoSyncTimer) { clearInterval(autoSyncTimer); autoSyncTimer = null; }
+      return;
+    }
+    const state = filesStore.getState();
+    const kb = state.knowledgeBases.find(k => k.id === state.activeKnowledgeBaseId);
+    if (!kb?.git?.autoSync) {
+      if (autoSyncTimer) { clearInterval(autoSyncTimer); autoSyncTimer = null; }
+      return;
+    }
+    const intervalMs = (kb.git.syncIntervalMin || 5) * 60 * 1000;
+    if (autoSyncTimer) clearInterval(autoSyncTimer);
+    autoSyncTimer = setInterval(() => { handleGitSync(); }, intervalMs);
+  });
   let indexingClearTimer: ReturnType<typeof setTimeout> | undefined;
   let seoCompleted = $state(false);
   let imageGenCompleted = $state(false);
@@ -663,6 +718,21 @@ ${tr('welcome.tip')}
         content = tab.content;
         currentFileName = tab.fileName;
         replaceContentAndScrollToTop(tab.content);
+
+        // Refresh review anchors for the newly active tab (non-image, git-bound KB)
+        if (!tab.isImage && tab.filePath) {
+          const kb2 = filesStore.getActiveKnowledgeBase?.();
+          if (kb2?.git) {
+            const rp = tab.filePath.startsWith(kb2.path + '/')
+              ? tab.filePath.slice(kb2.path.length + 1)
+              : tab.filePath;
+            reviewStore.loadForFile(kb2.path, rp, tab.content).catch(() => {});
+          } else {
+            reviewStore.unload();
+          }
+        } else {
+          reviewStore.unload();
+        }
         // Re-run search on new tab's content if search bar is open
         if (showSearch && lastSearchText) {
           requestAnimationFrame(() => {
@@ -706,6 +776,24 @@ ${tr('welcome.tip')}
     unsubEditor();
     unsubTabs();
     unsubMCP();
+    unsubGitKB();
+    if (autoSyncTimer) clearInterval(autoSyncTimer);
+
+    // Release file lock + unload review store on window close
+    reviewStore.unload();
+    const edState = editorStore.getState();
+    const curPath = edState.currentFilePath;
+    if (curPath) {
+      const kb3 = filesStore.getActiveKnowledgeBase?.();
+      if (kb3?.git) {
+        const rp3 = curPath.startsWith(kb3.path + '/')
+          ? curPath.slice(kb3.path.length + 1)
+          : curPath;
+        import('$lib/services/review').then(({ releaseLock }) => {
+          releaseLock(kb3.path, rp3, kb3).catch(() => {});
+        }).catch(() => {});
+      }
+    }
   });
 
   // Sync native menu checkmarks when editor mode changes (all desktop platforms).
@@ -952,6 +1040,28 @@ ${tr('welcome.tip')}
     if (!isTauri && mod && event.shiftKey && (event.key === 'O' || event.key === 'o')) {
       event.preventDefault();
       settingsStore.update({ showOutline: !showOutline });
+      return;
+    }
+
+    // Add Review: Cmd+Shift+R / Ctrl+Shift+R
+    if (mod && event.shiftKey && (event.key === 'R' || event.key === 'r')) {
+      event.preventDefault();
+      if (editorMode !== 'visual' && editorMode !== 'split') {
+        showToast($t('review.sourceModeLimitHint'), 'error');
+        return;
+      }
+      const view = morayaEditor?.view;
+      if (!view) return;
+      const { from, to } = view.state.selection;
+      if (from === to) {
+        showToast($t('review.selectTextFirst'), 'error');
+        return;
+      }
+      const selText = view.state.doc.textBetween(from, to, ' ');
+      const docText = view.state.doc.textContent;
+      const ctxBefore = docText.slice(Math.max(0, from - 50), from);
+      const ctxAfter = docText.slice(to, to + 50);
+      handleAddReview(selText, ctxBefore, ctxAfter);
       return;
     }
 
@@ -1578,6 +1688,52 @@ ${tr('welcome.tip')}
     tabsStore.openFileTab(path, fileName, fileContent, mtime, true);
     resetWorkflowState();
 
+    // Load reviews + acquire lock for git-bound KB (non-image files only)
+    if (!isImageFile(fileName)) {
+      const activeKb = filesStore.getActiveKnowledgeBase?.();
+      if (activeKb?.git) {
+        const docRelPath = path.startsWith(activeKb.path + '/')
+          ? path.slice(activeKb.path.length + 1)
+          : path;
+
+        // Fetch git user info (cached in selfName/selfEmail)
+        if (!selfName) {
+          try {
+            const { gitGetUserInfo } = await import('$lib/services/git');
+            const info = await gitGetUserInfo(activeKb.path);
+            selfName = info.name;
+            selfEmail = info.email;
+          } catch { /* ignore */ }
+        }
+
+        // Load reviews asynchronously
+        reviewStore.loadForFile(activeKb.path, docRelPath, fileContent).catch(() => {});
+
+        // Acquire lock (non-blocking display)
+        try {
+          const { acquireLock, readLocks } = await import('$lib/services/review');
+          const lockResult = await acquireLock(
+            activeKb.path,
+            docRelPath,
+            { name: selfName, email: selfEmail },
+            activeKb,
+          );
+          if (!lockResult.success) {
+            // Someone else holds the lock — read locks.json for the full Lock object
+            const locksFile = await readLocks(activeKb.path);
+            currentFileLock = locksFile.locks[docRelPath] ?? null;
+          } else {
+            currentFileLock = null;
+          }
+        } catch {
+          currentFileLock = null;
+        }
+      } else {
+        reviewStore.unload();
+        currentFileLock = null;
+      }
+    }
+
     // Scroll to search result + flash highlight keyword
     if (pendingScrollCharOffset > 0 || pendingSearchKeyword) {
       const keyword = pendingSearchKeyword;
@@ -1615,6 +1771,68 @@ ${tr('welcome.tip')}
 
   function handleContentChange(newContent: string) {
     content = newContent;
+  }
+
+  async function handleAddReview(selectedText: string, contextBefore: string, contextAfter: string) {
+    if (!selectedText) {
+      showToast($t('review.selectTextFirst'), 'error');
+      return;
+    }
+    const editorState = editorStore.getState();
+    const filePath = editorState.currentFilePath;
+    if (!filePath) return;
+
+    const kb = filesStore.getActiveKnowledgeBase?.();
+    if (!kb?.git) {
+      showToast($t('review.notGitBound'), 'error');
+      return;
+    }
+
+    const kbRoot = kb.path;
+
+    const { gitHeadCommit } = await import('$lib/services/git');
+    let commitHash = '';
+    try { commitHash = await gitHeadCommit(kbRoot); } catch { /* no commits yet */ }
+
+    const docText = getCurrentContent();
+    const markedIdx = docText.indexOf(selectedText);
+    const originalLine = markedIdx >= 0
+      ? (docText.slice(0, markedIdx).match(/\n/g) || []).length + 1
+      : 1;
+
+    const anchor = {
+      commitHash,
+      markedText: selectedText,
+      contextBefore: contextBefore.slice(-50),
+      contextAfter: contextAfter.slice(0, 50),
+      originalLine,
+    };
+
+    // If review panel is waiting for a text selection to re-anchor, route there instead.
+    if (reviewPanelRef?.getIsReanchoring()) {
+      reviewPanelRef.confirmReanchor(anchor);
+      return;
+    }
+
+    const { createReview } = await import('$lib/services/review/review-service');
+    const review = createReview(selfName, selfEmail, anchor, '');
+
+    try {
+      await reviewStore.addReview(review);
+      showReviewPanel = true;
+      showAIPanel = false;
+      reviewStore.setActive(review.id);
+    } catch (e) {
+      showToast(String(e), 'error');
+    }
+  }
+
+  function handleJumpToReview(reviewId: string) {
+    reviewStore.setActive(reviewId);
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`[data-review-id="${reviewId}"]`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
   }
 
   function handleAIInsert(text: string) {
@@ -1712,13 +1930,35 @@ ${tr('welcome.tip')}
     } else if (mode === 'paragraph') {
       // Insert each image after its target paragraph
       const lines = content.split('\n');
+
+      // Count total paragraphs in the current article so we can validate /
+      // redistribute targets. Stale caches, bad AI output, or plain-text
+      // prompt blocks can all produce duplicate target=0 values → safety net.
+      let paraTotal = 0;
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].trim() && (i + 1 >= lines.length || !lines[i + 1]?.trim())) paraTotal++;
+      }
+
+      const targets = images.map(img => Math.max(0, Math.min(img.target, Math.max(0, paraTotal - 1))));
+      const uniqueTargets = new Set(targets);
+      const shouldRedistribute = paraTotal >= 2 && uniqueTargets.size < images.length;
+      if (shouldRedistribute) {
+        // Spread evenly across all paragraphs when images cluster on the
+        // same target paragraph (common when prompt generation used truncated
+        // content or all targets defaulted to 0).
+        const segment = paraTotal / images.length;
+        for (let i = 0; i < images.length; i++) {
+          targets[i] = Math.min(Math.round(segment * i + segment / 2), paraTotal - 1);
+        }
+      }
+
       let paragraphIdx = 0;
       const insertions: Map<number, string[]> = new Map();
-
-      for (const img of images) {
-        const existing = insertions.get(img.target) || [];
-        existing.push(`![](${img.url})`);
-        insertions.set(img.target, existing);
+      for (let i = 0; i < images.length; i++) {
+        const t = targets[i];
+        const existing = insertions.get(t) || [];
+        existing.push(`![](${images[i].url})`);
+        insertions.set(t, existing);
       }
 
       // Pre-compute fenced code block regions to avoid inserting images inside them
@@ -2579,7 +2819,26 @@ ${tr('welcome.tip')}
 
   <div class="app-body">
     {#if showSidebar}
-      <Sidebar onFileSelect={handleFileSelect} onRename={handleFileRename} onOpenKBManager={() => showKBManager = true} onOpenSettings={(tab) => { settingsInitialTab = tab as any; showSettings = true; }} />
+      <Sidebar
+        onFileSelect={handleFileSelect}
+        onRename={handleFileRename}
+        onOpenKBManager={() => showKBManager = true}
+        onOpenSettings={(tab) => { settingsInitialTab = tab as any; showSettings = true; }}
+        currentFileLock={currentFileLock}
+        selfName={selfName}
+        onForceUnlock={async () => {
+          const edState = editorStore.getState();
+          const curPath = edState.currentFilePath;
+          if (!curPath) return;
+          const kb = filesStore.getActiveKnowledgeBase?.();
+          if (!kb?.git) return;
+          const rp = curPath.startsWith(kb.path + '/') ? curPath.slice(kb.path.length + 1) : curPath;
+          const { forceUnlock } = await import('$lib/services/review');
+          await forceUnlock(kb.path, rp, kb);
+          currentFileLock = null;
+        }}
+        onViewReadonly={() => { /* treat as read-only view */ }}
+      />
     {/if}
 
     <main class="editor-area">
@@ -2593,7 +2852,7 @@ ${tr('welcome.tip')}
           </div>
         </div>
       {:else if editorMode === 'visual'}
-        <Editor bind:this={visualEditorRef} bind:content {showOutline} {outlineWidth} onEditorReady={handleEditorReady} onNotify={showToast} onOutlineWidthChange={(w) => settingsStore.update({ outlineWidth: w })} onWorkflowSEO={handleWorkflowSEO} onWorkflowImageGen={handleWorkflowImageGen} onWorkflowPublish={handleWorkflowPublish} onForceShowAIPanel={() => { showAIPanel = true; }} />
+        <Editor bind:this={visualEditorRef} bind:content {showOutline} {outlineWidth} onEditorReady={handleEditorReady} onNotify={showToast} onOutlineWidthChange={(w) => settingsStore.update({ outlineWidth: w })} onWorkflowSEO={handleWorkflowSEO} onWorkflowImageGen={handleWorkflowImageGen} onWorkflowPublish={handleWorkflowPublish} onForceShowAIPanel={() => { showAIPanel = true; }} onAddReview={handleAddReview} />
       {:else if editorMode === 'source'}
         <SourceEditor bind:this={sourceEditorRef} bind:content {showOutline} {outlineWidth} onContentChange={handleContentChange} onOutlineWidthChange={(w) => settingsStore.update({ outlineWidth: w })} />
       {:else if editorMode === 'split'}
@@ -2634,6 +2893,24 @@ ${tr('welcome.tip')}
         />
       {/await}
     {/if}
+
+    {#if showReviewPanel}
+      {#await import('$lib/components/ReviewPanel.svelte') then { default: ReviewPanelComp }}
+        <div class="review-panel-outer">
+          <div class="review-panel-header">
+            <span class="review-panel-title">{$t('review.panelTitle')}</span>
+            <button class="review-panel-close" onclick={() => { showReviewPanel = false; }} aria-label="Close">✕</button>
+          </div>
+          <ReviewPanelComp
+            bind:this={reviewPanelRef}
+            kb={filesStore.getActiveKnowledgeBase?.() ?? null}
+            {editorMode}
+            onJumpToReview={handleJumpToReview}
+            onOpenGitBind={() => showKBManager = true}
+          />
+        </div>
+      {/await}
+    {/if}
   </div>
 
   {#if showTouchToolbar && editorMode !== 'source'}
@@ -2644,6 +2921,7 @@ ${tr('welcome.tip')}
     onShowUpdateDialog={() => showUpdateDialog = true}
     onToggleAI={() => showAIPanel = !showAIPanel}
     onModeChange={(mode) => { editorMode = mode; editorStore.setEditorMode(mode); }}
+    onGitSync={gitBound ? handleGitSync : undefined}
     currentMode={editorMode}
     hideModeSwitcher={!!activeImageTab}
     aiPanelOpen={showAIPanel}
@@ -2733,6 +3011,11 @@ ${tr('welcome.tip')}
   {/await}
 {/if}
 
+<!-- Always mounted: listens for moraya:// deep-link payloads + manual-import events. -->
+{#await import('$lib/components/PicoraImportDialog.svelte') then { default: PicoraImportDialog }}
+  <PicoraImportDialog onToast={showToast} />
+{/await}
+
 {#if publishProgress.length > 0}
   <div class="publish-progress">
     <div class="progress-title">{$t('publish.progressTitle')}</div>
@@ -2791,6 +3074,52 @@ ${tr('welcome.tip')}
   :global(.platform-macos) .app-body > :global(.sidebar) {
     padding-top: 28px;
   }
+
+  .review-panel-outer {
+    width: 320px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    border-left: 1px solid var(--border-color);
+    background: var(--bg-primary);
+    overflow: hidden;
+  }
+
+  .review-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-color);
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    color: var(--text-primary);
+    flex-shrink: 0;
+  }
+
+  :global(.platform-macos) .review-panel-outer {
+    padding-top: 28px;
+  }
+
+  .review-panel-title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .review-panel-close {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-muted);
+    font-size: var(--font-size-sm);
+    padding: 2px 4px;
+    border-radius: 3px;
+    line-height: 1;
+  }
+  .review-panel-close:hover { color: var(--text-primary); background: var(--bg-hover); }
 
   :global(.platform-macos) .app-body > :global(.ai-panel) {
     padding-top: 28px;

@@ -3,6 +3,8 @@
   import { filesStore, type KnowledgeBase } from '../stores/files-store';
   import { open, ask } from '@tauri-apps/plugin-dialog';
   import { t } from '$lib/i18n';
+  import { checkGitInstalled, deleteGitToken } from '$lib/services/git';
+  import GitBindDialog from './GitBindDialog.svelte';
 
   let { onClose }: { onClose: () => void } = $props();
 
@@ -10,6 +12,8 @@
   let editingId = $state<string | null>(null);
   let editingName = $state('');
   let editInputEl = $state<HTMLInputElement | null>(null);
+  let gitAvailable = $state<boolean | null>(null);
+  let bindingKb = $state<KnowledgeBase | null>(null);
 
   // Top-level store subscription — do NOT wrap in $effect().
   // Svelte 5 $effect tracks reads in subscribe callbacks, causing infinite loops.
@@ -75,6 +79,27 @@
     if (!ts) return '';
     return new Date(ts).toLocaleDateString();
   }
+
+  // Check git availability on mount
+  $effect(() => {
+    checkGitInstalled().then(ok => { gitAvailable = ok; }).catch(() => { gitAvailable = false; });
+  });
+
+  async function unbindGit(kb: KnowledgeBase) {
+    if (!kb.git) return;
+    const confirmed = await ask(
+      $t('git.unbindConfirm').replace('{name}', kb.name),
+      { title: $t('git.unbindTitle'), kind: 'warning' }
+    );
+    if (confirmed) {
+      await deleteGitToken(kb.git.configId).catch(() => {});
+      filesStore.updateKnowledgeBase(kb.id, { git: undefined });
+    }
+  }
+
+  function shortenUrl(url: string): string {
+    return url.replace(/^https?:\/\//, '').replace(/\.git$/, '');
+  }
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -115,8 +140,23 @@
                   >{kb.name}</span>
                 {/if}
                 <span class="kb-list-path" title={kb.path}>{kb.path}</span>
+                {#if kb.git}
+                  <span class="kb-git-info" title={kb.git.remoteUrl}>
+                    <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+                    {shortenUrl(kb.git.remoteUrl)}
+                  </span>
+                {/if}
               </div>
               <div class="kb-list-actions">
+                {#if kb.git}
+                  <button class="kb-action-btn" onclick={() => unbindGit(kb)} title={$t('git.unbind')}>
+                    <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M4.28 3.22a.75.75 0 00-1.06 1.06L6.94 8l-3.72 3.72a.75.75 0 101.06 1.06L8 9.06l3.72 3.72a.75.75 0 101.06-1.06L9.06 8l3.72-3.72a.75.75 0 00-1.06-1.06L8 6.94 4.28 3.22z"/></svg>
+                  </button>
+                {:else if gitAvailable}
+                  <button class="kb-action-btn" onclick={() => { bindingKb = kb; }} title={$t('git.bind')}>
+                    <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M5 3.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0zm0 2.122a2.25 2.25 0 1 0-1.5 0v.878A2.25 2.25 0 0 0 5.75 8.5h1.5v2.128a2.251 2.251 0 1 0 1.5 0V8.5h1.5a2.25 2.25 0 0 0 2.25-2.25V5.372a2.25 2.25 0 1 0-1.5 0v.878a.75.75 0 0 1-.75.75h-4.5A.75.75 0 0 1 5 6.25v-.878zm3.75 7.378a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0zm3-8.75a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0z"/></svg>
+                  </button>
+                {/if}
                 <button class="kb-action-btn" onclick={() => startRename(kb)} title={$t('knowledgeBase.rename')}>
                   <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M11.013 1.427a1.75 1.75 0 012.474 0l1.086 1.086a1.75 1.75 0 010 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 01-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61zM11.189 3.5L3 11.689v.001l-.59 2.058 2.058-.59L12.657 4.97 11.19 3.5z"/></svg>
                 </button>
@@ -137,6 +177,10 @@
     </div>
   </div>
 </div>
+
+{#if bindingKb}
+  <GitBindDialog kb={bindingKb} onClose={() => { bindingKb = null; }} />
+{/if}
 
 <style>
   .kb-overlay {
@@ -309,5 +353,20 @@
     border-color: var(--accent-color);
     color: var(--accent-color);
     background: var(--bg-hover);
+  }
+
+  .kb-git-info {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: var(--font-size-xs);
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .kb-git-info svg {
+    flex-shrink: 0;
   }
 </style>

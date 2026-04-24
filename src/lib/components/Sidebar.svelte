@@ -9,17 +9,29 @@
   import { startWatching, stopWatching, refreshFileTree } from '$lib/services/file-watcher';
   import { load as loadStore } from '@tauri-apps/plugin-store';
   import FileContextMenu from './FileContextMenu.svelte';
+  import LockIndicator from './LockIndicator.svelte';
+  import type { Lock } from '$lib/services/review/types';
 
   let {
     onFileSelect,
     onOpenKBManager,
     onRename,
     onOpenSettings,
+    currentFileLock = null,
+    selfName = '',
+    onForceUnlock,
+    onViewReadonly,
   }: {
     onFileSelect: (path: string, scrollOffset?: number, keyword?: string) => void;
     onOpenKBManager?: () => void;
     onRename?: (oldPath: string, newPath: string) => void;
     onOpenSettings?: (tab: string) => void;
+    /** Lock state for the currently open file, or null. */
+    currentFileLock?: Lock | null;
+    /** Current user's git name (for distinguishing own vs. other's lock). */
+    selfName?: string;
+    onForceUnlock?: () => void;
+    onViewReadonly?: () => void;
   } = $props();
 
   let fileTree = $state<FileEntry[]>([]);
@@ -1026,6 +1038,13 @@
       </div>
     </div>
   {/if}
+
+  <LockIndicator
+    lock={currentFileLock}
+    {selfName}
+    onForceUnlock={onForceUnlock}
+    onViewReadonly={onViewReadonly}
+  />
 
   <div class="sidebar-content" class:drop-root={dropTargetPath === folderPath && !!folderPath}>
     {#if knowledgeBases.length === 0}

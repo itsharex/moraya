@@ -5,6 +5,7 @@ import { editorStore } from '../stores/editor-store';
 import { filesStore, type FileEntry } from '../stores/files-store';
 import { invalidateDocCache } from '../editor/doc-cache';
 import { computeImageDir, computeImageRelativePath } from './ai/image-path-utils';
+import { get } from 'svelte/store';
 
 const MIME_MAP: Record<string, string> = {
   png: 'image/png',
@@ -53,6 +54,8 @@ export async function saveFile(content: string): Promise<boolean> {
     import('$lib/services/kb').then(({ autoIndexOnSave }) => {
       autoIndexOnSave(filePath).catch(() => {});
     }).catch(() => {});
+    // Git auto-commit on save (best-effort, non-blocking)
+    autoCommitOnSave(filePath).catch(() => {});
     return true;
   }
 
@@ -199,4 +202,35 @@ const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'b
 export function isImageFile(name: string): boolean {
   const ext = name.split('.').pop()?.toLowerCase() ?? '';
   return IMAGE_EXTENSIONS.has(ext);
+}
+
+/**
+ * If the saved file belongs to a git-bound knowledge base with autoCommit enabled,
+ * stage and commit it automatically. Non-blocking, errors are silently ignored.
+ */
+async function autoCommitOnSave(filePath: string): Promise<void> {
+  const filesState = get(filesStore);
+  const kb = filesState.knowledgeBases.find(
+    (k) => k.git?.autoCommit && filePath.startsWith(k.path),
+  );
+  if (!kb?.git) return;
+
+  const { gitAddCommit, gitStore } = await import('$lib/services/git');
+
+  // Use relative path for the commit message
+  const relPath = filePath.startsWith(kb.path)
+    ? filePath.slice(kb.path.length + 1)
+    : filePath.split('/').pop() || filePath;
+
+  gitStore.setCommitting();
+  try {
+    await gitAddCommit(kb.path, [relPath], `update: ${relPath}`);
+    // Update sync status after commit
+    const { gitSyncStatus } = await import('$lib/services/git');
+    const status = await gitSyncStatus(kb.path, kb.git.configId);
+    gitStore.setSyncResult(status.ahead, status.behind, status.branch);
+  } catch {
+    // Commit may fail if nothing changed — not an error worth showing
+    gitStore.setSyncResult(0, 0, kb.git.branch);
+  }
 }

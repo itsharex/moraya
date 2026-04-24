@@ -4,5 +4,16 @@
 <dict>
   <key>NSMicrophoneUsageDescription</key>
   <string>Moraya uses the microphone for real-time voice transcription.</string>
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLName</key>
+      <string>com.moraya.app.deeplink</string>
+      <key>CFBundleURLSchemes</key>
+      <array>
+        <string>moraya</string>
+      </array>
+    </dict>
+  </array>
 </dict>
 </plist>

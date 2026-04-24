@@ -2,6 +2,25 @@ import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 import { invoke } from '@tauri-apps/api/core';
 import type { ImageHostConfig, UploadResult } from './types';
 
+/** Map a MIME to a bare file extension (no dot). */
+function extFromMime(mime: string): string | null {
+  const m = (mime || '').toLowerCase();
+  switch (m) {
+    case 'image/png':      return 'png';
+    case 'image/jpeg':     return 'jpg';
+    case 'image/gif':      return 'gif';
+    case 'image/webp':     return 'webp';
+    case 'image/svg+xml':  return 'svg';
+    case 'image/bmp':      return 'bmp';
+    case 'image/x-icon':
+    case 'image/vnd.microsoft.icon': return 'ico';
+    case 'image/avif':     return 'avif';
+    case 'image/tiff':     return 'tiff';
+    case 'image/heic':     return 'heic';
+    default: return null;
+  }
+}
+
 /**
  * Generate a timestamped filename to avoid conflicts.
  * e.g. "20260205-143052-photo.png"
@@ -176,6 +195,24 @@ async function uploadToGitCustom(blob: Blob, config: ImageHostConfig): Promise<U
   return { url: imageUrl };
 }
 
+async function uploadToPicora(blob: Blob, config: ImageHostConfig): Promise<UploadResult> {
+  if (!config.picoraApiUrl || !config.picoraApiKey) {
+    throw new Error('Picora is not configured (missing endpoint or API key)');
+  }
+  const arrayBuffer = await blob.arrayBuffer();
+  const fileBytes = Array.from(new Uint8Array(arrayBuffer));
+  const ext = extFromMime(blob.type) || 'png';
+  const filename = timestampedName((blob as File).name || `image.${ext}`);
+  const url = await invoke<string>('upload_to_picora', {
+    apiUrl: config.picoraApiUrl,
+    apiKey: config.picoraApiKey,
+    fileBytes,
+    mimeType: blob.type || 'image/png',
+    filename,
+  });
+  return { url };
+}
+
 async function uploadToSmms(blob: Blob, config: ImageHostConfig): Promise<UploadResult> {
   const formData = new FormData();
   formData.append('smfile', blob, 'image.png');
@@ -231,7 +268,10 @@ async function uploadToCustom(blob: Blob, config: ImageHostConfig): Promise<Uplo
   }
 
   const formData = new FormData();
-  formData.append('file', blob, 'image.png');
+  // Derive a sensible filename extension from the blob's MIME so the server
+  // doesn't receive `image.png` for a `.webp`/`.jpeg`/etc. payload.
+  const ext = extFromMime(blob.type) || 'png';
+  formData.append('file', blob, `image.${ext}`);
 
   let headers: Record<string, string> = {};
   if (config.apiToken) {
@@ -252,26 +292,86 @@ async function uploadToCustom(blob: Blob, config: ImageHostConfig): Promise<Uplo
     body: formData,
   });
 
+  const rawText = await res.text();
+
   if (!res.ok) {
-    throw new Error(`Upload failed: ${res.status} ${res.statusText}`);
+    const snippet = rawText.slice(0, 300);
+    throw new Error(`Upload failed: ${res.status} ${res.statusText}${snippet ? ` — ${snippet}` : ''}`);
   }
 
-  const json = await res.json();
+  let json: Record<string, unknown>;
+  try {
+    json = JSON.parse(rawText);
+  } catch {
+    throw new Error(`Unexpected non-JSON response: ${rawText.slice(0, 300)}`);
+  }
 
-  // Try common response formats
-  const url =
-    json.url ||
-    json.data?.url ||
-    json.data?.link ||
-    json.src ||
-    json.image?.url ||
-    json.result?.url;
+  const detectedUrl = pickUrlFromResponse(json);
+  const template = (config.customUrlTemplate || '').trim();
+
+  let url: string | undefined;
+  if (template) {
+    url = renderUrlTemplate(template, json, detectedUrl);
+  } else {
+    url = detectedUrl;
+  }
 
   if (!url) {
-    throw new Error('Could not find image URL in response');
+    throw new Error(`Could not find image URL in response: ${JSON.stringify(json).slice(0, 1000)}`);
   }
 
   return { url };
+}
+
+/** Render URL template by replacing {field} placeholders with response values.
+ *  Supports dot paths like {data.id}, {data.storageKey}. Bare {id} / {storageKey} /
+ *  {filename} / {url} also resolve against the response root and common {data: {...}} wrapper. */
+function renderUrlTemplate(template: string, json: Record<string, unknown>, detectedUrl?: string): string {
+  const pick = (path: string): string | undefined => {
+    if (path === 'url' && detectedUrl) return detectedUrl;
+    const parts = path.split('.');
+    // Try exact path first
+    let val: unknown = json;
+    for (const p of parts) {
+      if (val && typeof val === 'object' && p in (val as object)) {
+        val = (val as Record<string, unknown>)[p];
+      } else {
+        val = undefined;
+        break;
+      }
+    }
+    if (typeof val === 'string' || typeof val === 'number') return String(val);
+    // Fallback: look inside {data: {...}} wrapper for bare keys
+    if (parts.length === 1 && json.data && typeof json.data === 'object') {
+      const d = (json.data as Record<string, unknown>)[parts[0]];
+      if (typeof d === 'string' || typeof d === 'number') return String(d);
+    }
+    return undefined;
+  };
+  return template.replace(/\{([^{}]+)\}/g, (_, key) => pick(key.trim()) ?? '');
+}
+
+/** Walk common response shapes for an image URL field. */
+function pickUrlFromResponse(json: Record<string, unknown>): string | undefined {
+  const candidates = [
+    (json as any).url,
+    (json as any).data?.url,
+    (json as any).data?.link,
+    (json as any).data?.fullurl,
+    (json as any).data?.image_url,
+    (json as any).data?.src,
+    (json as any).src,
+    (json as any).link,
+    (json as any).fullurl,
+    (json as any).image?.url,
+    (json as any).image_url,
+    (json as any).result?.url,
+    (json as any).result?.link,
+  ];
+  for (const c of candidates) {
+    if (typeof c === 'string' && c.length > 0) return c;
+  }
+  return undefined;
 }
 
 /**
@@ -321,6 +421,7 @@ export const providers: Record<
   string,
   (blob: Blob, config: ImageHostConfig) => Promise<UploadResult>
 > = {
+  picora: uploadToPicora,
   smms: uploadToSmms,
   imgur: uploadToImgur,
   github: uploadToGitHub,

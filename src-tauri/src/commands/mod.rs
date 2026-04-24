@@ -1,5 +1,7 @@
 pub mod ai_proxy;
 pub mod file;
+pub mod git;
+pub mod image_hosting_picora;
 pub mod kb;
 pub mod keychain;
 pub mod macos_system_audio;

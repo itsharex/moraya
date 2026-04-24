@@ -10,6 +10,16 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(async () => ({
   plugins: [sveltekit()],
 
+  test: {
+    globals: true,
+    environment: 'node',
+    include: ['src/**/*.test.ts'],
+    setupFiles: ['src/test/setup.ts'],
+    alias: {
+      '$lib': new URL('./src/lib', import.meta.url).pathname,
+    },
+  },
+
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
   },

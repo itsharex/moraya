@@ -5,12 +5,15 @@
   import type { ImageHostTarget, ImageHostProvider, GitHubCdnMode } from '$lib/services/image-hosting';
   import { createDefaultImageHostTarget, targetToConfig, uploadImage, isObjectStorageProvider } from '$lib/services/image-hosting';
 
+  let { onImportPicora }: { onImportPicora?: () => void } = $props();
+
   const tr = $t;
 
   let targets = $state<ImageHostTarget[]>([]);
   let defaultId = $state('');
   let editingTarget = $state<ImageHostTarget | null>(null);
   let showAddMenu = $state(false);
+  let showOtherProviders = $state(false);
   let testStatus = $state<Record<string, 'idle' | 'testing' | 'success' | 'failed'>>({});
   let testError = $state<Record<string, string>>({});
 
@@ -35,6 +38,7 @@
   onDestroy(() => { unsubSettings(); });
 
   const PROVIDER_ICONS: Record<ImageHostProvider, string> = {
+    picora: '⭐',
     smms: '🟠',
     imgur: '🟢',
     github: '🔵',
@@ -47,6 +51,15 @@
     'aws-s3': '⬛',
     'google-gcs': '🌐',
   };
+
+  /** Sorted view: featured / Picora targets pinned to the top, rest in insertion order. */
+  const sortedTargets = $derived(
+    [...targets].sort((a, b) => {
+      const aFeatured = a.featured || a.provider === 'picora' ? 0 : 1;
+      const bFeatured = b.featured || b.provider === 'picora' ? 0 : 1;
+      return aFeatured - bFeatured;
+    })
+  );
 
   function providerLabel(provider: ImageHostProvider): string {
     return tr(`imageHost.${provider.replace(/-/g, '_')}`);
@@ -348,6 +361,33 @@
         </div>
       {/if}
 
+      {#if editingTarget.provider === 'picora'}
+        {#if editingTarget.picoraUserEmail}
+          <div class="setting-group">
+            <span class="setting-label">{tr('imageHost.picoraUserEmail')}</span>
+            <input type="text" class="setting-input" value={editingTarget.picoraUserEmail} readonly />
+          </div>
+        {/if}
+        <div class="setting-group">
+          <label class="setting-label" for="imghost-picora-api-url">{tr('imageHost.picoraApiUrl')}</label>
+          <input id="imghost-picora-api-url" type="text" class="setting-input"
+            bind:value={editingTarget.picoraApiUrl}
+            placeholder={tr('imageHost.picoraApiUrlPlaceholder')} />
+        </div>
+        <div class="setting-group">
+          <label class="setting-label" for="imghost-picora-img-domain">{tr('imageHost.picoraImgDomain')}</label>
+          <input id="imghost-picora-img-domain" type="text" class="setting-input"
+            bind:value={editingTarget.picoraImgDomain}
+            placeholder={tr('imageHost.picoraImgDomainPlaceholder')} />
+        </div>
+        <div class="setting-group">
+          <label class="setting-label" for="imghost-picora-key">{tr('imageHost.picoraApiKey')}</label>
+          <input id="imghost-picora-key" type="password" class="setting-input"
+            bind:value={editingTarget.picoraApiKey}
+            placeholder={tr('imageHost.picoraApiKeyPlaceholder')} />
+        </div>
+      {/if}
+
       {#if editingTarget.provider === 'custom'}
         <div class="setting-group">
           <label class="setting-label" for="imghost-custom-token">{tr('imageHost.apiToken')}</label>
@@ -366,6 +406,13 @@
             placeholder={'{"X-Custom-Header": "value"}'}
             rows="3"
           ></textarea>
+        </div>
+        <div class="setting-group">
+          <label class="setting-label" for="imghost-custom-url-template">{tr('imageHost.customUrlTemplate')}</label>
+          <input id="imghost-custom-url-template" type="text" class="setting-input"
+            bind:value={editingTarget.customUrlTemplate}
+            placeholder={tr('imageHost.customUrlTemplatePlaceholder')} />
+          <p class="setting-hint">{tr('imageHost.customUrlTemplateHint')}</p>
         </div>
       {/if}
 
@@ -431,11 +478,34 @@
       </div>
 
       <div class="form-actions">
-        <button class="btn btn-secondary" onclick={cancelEdit}>{tr('common.cancel')}</button>
-        <button class="btn btn-primary" onclick={saveTarget} disabled={!editingTarget.name}>
-          {tr('common.save')}
+        <button
+          class="btn btn-test"
+          class:testing={testStatus[editingTarget.id] === 'testing'}
+          class:success={testStatus[editingTarget.id] === 'success'}
+          class:failed={testStatus[editingTarget.id] === 'failed'}
+          onclick={() => handleTestUpload(editingTarget!)}
+          disabled={testStatus[editingTarget.id] === 'testing' || !editingTarget.name}
+        >
+          {#if testStatus[editingTarget.id] === 'testing'}
+            {tr('imageHost.testing')}
+          {:else if testStatus[editingTarget.id] === 'success'}
+            ✓ {tr('imageHost.test')}
+          {:else if testStatus[editingTarget.id] === 'failed'}
+            ✗ {tr('imageHost.test')}
+          {:else}
+            {tr('imageHost.test')}
+          {/if}
         </button>
+        <div class="form-actions-right">
+          <button class="btn btn-secondary" onclick={cancelEdit}>{tr('common.cancel')}</button>
+          <button class="btn btn-primary" onclick={saveTarget} disabled={!editingTarget.name}>
+            {tr('common.save')}
+          </button>
+        </div>
       </div>
+      {#if testError[editingTarget.id] && testStatus[editingTarget.id] === 'failed'}
+        <p class="test-upload-error">{testError[editingTarget.id]}</p>
+      {/if}
     </div>
   {:else}
     <!-- Target list -->
@@ -446,14 +516,17 @@
       </div>
     {:else}
       <div class="target-list">
-        {#each targets as target (target.id)}
-          <div class="target-card">
+        {#each sortedTargets as target (target.id)}
+          <div class="target-card" class:is-featured={target.featured || target.provider === 'picora'}>
             <div class="target-card-row">
               <div class="target-info">
                 <span class="target-icon">{PROVIDER_ICONS[target.provider]}</span>
                 <div class="target-details">
                   <span class="target-name">
                     {target.name || '(unnamed)'}
+                    {#if target.featured || target.provider === 'picora'}
+                      <span class="featured-badge">{tr('imageHost.picoraFeaturedBadge')}</span>
+                    {/if}
                     {#if target.id === defaultId}
                       <span class="default-badge">{tr('imageHost.default')}</span>
                     {/if}
@@ -493,26 +566,53 @@
     <div class="add-section">
       {#if showAddMenu}
         <div class="add-menu">
-          <div class="add-group">
-            <span class="add-group-label">{tr('imageHost.groupApi')}</span>
-            <button class="add-option" onclick={() => addTarget('smms')}>🟠 {tr('imageHost.smms')}</button>
-            <button class="add-option" onclick={() => addTarget('imgur')}>🟢 {tr('imageHost.imgur')}</button>
-            <button class="add-option" onclick={() => addTarget('custom')}>🟣 {tr('imageHost.custom')}</button>
-          </div>
-          <div class="add-group">
-            <span class="add-group-label">{tr('imageHost.groupGit')}</span>
-            <button class="add-option" onclick={() => addTarget('github')}>🔵 {tr('imageHost.github')}</button>
-            <button class="add-option" onclick={() => addTarget('gitlab')}>🟤 {tr('imageHost.gitlab')}</button>
-            <button class="add-option" onclick={() => addTarget('git-custom')}>⚪ {tr('imageHost.git_custom')}</button>
-          </div>
-          <div class="add-group">
-            <span class="add-group-label">{tr('imageHost.groupOss')}</span>
-            <button class="add-option" onclick={() => addTarget('qiniu')}>🟡 {tr('imageHost.qiniu')}</button>
-            <button class="add-option" onclick={() => addTarget('aliyun-oss')}>🔴 {tr('imageHost.aliyun_oss')}</button>
-            <button class="add-option" onclick={() => addTarget('tencent-cos')}>🟤 {tr('imageHost.tencent_cos')}</button>
-            <button class="add-option" onclick={() => addTarget('aws-s3')}>⬛ {tr('imageHost.aws_s3')}</button>
-            <button class="add-option" onclick={() => addTarget('google-gcs')}>🌐 {tr('imageHost.google_gcs')}</button>
-          </div>
+          <!-- Hero: Picora featured entry. Visually separated from the grid below. -->
+          <button
+            class="picora-hero"
+            onclick={() => { showAddMenu = false; onImportPicora?.(); }}>
+            <span class="picora-hero-icon">⭐</span>
+            <span class="picora-hero-body">
+              <span class="picora-hero-title">
+                {tr('imageHost.picora')}
+                <span class="picora-hero-badge">{tr('imageHost.picoraFeaturedBadge')}</span>
+              </span>
+              <span class="picora-hero-subtitle">{tr('imageHost.picoraHeroDesc')}</span>
+            </span>
+            <span class="picora-hero-cta">{tr('imageHost.picoraOneClick')} →</span>
+          </button>
+
+          <!-- Collapsible "Other providers" dropdown — collapsed by default to emphasize Picora. -->
+          <button
+            class="other-providers-toggle"
+            class:is-open={showOtherProviders}
+            aria-expanded={showOtherProviders}
+            onclick={() => (showOtherProviders = !showOtherProviders)}>
+            <span class="chevron" aria-hidden="true">▶</span>
+            <span class="other-providers-label">{tr('imageHost.otherProviders')}</span>
+          </button>
+
+          {#if showOtherProviders}
+            <div class="other-providers-body">
+              <div class="add-group">
+                <span class="add-group-label">{tr('imageHost.groupApi')}</span>
+                <button class="add-option" onclick={() => addTarget('custom')}>🟣 {tr('imageHost.custom')}</button>
+              </div>
+              <div class="add-group">
+                <span class="add-group-label">{tr('imageHost.groupGit')}</span>
+                <button class="add-option" onclick={() => addTarget('github')}>🔵 {tr('imageHost.github')}</button>
+                <button class="add-option" onclick={() => addTarget('gitlab')}>🟤 {tr('imageHost.gitlab')}</button>
+                <button class="add-option" onclick={() => addTarget('git-custom')}>⚪ {tr('imageHost.git_custom')}</button>
+              </div>
+              <div class="add-group">
+                <span class="add-group-label">{tr('imageHost.groupOss')}</span>
+                <button class="add-option" onclick={() => addTarget('qiniu')}>🟡 {tr('imageHost.qiniu')}</button>
+                <button class="add-option" onclick={() => addTarget('aliyun-oss')}>🔴 {tr('imageHost.aliyun_oss')}</button>
+                <button class="add-option" onclick={() => addTarget('tencent-cos')}>🟤 {tr('imageHost.tencent_cos')}</button>
+                <button class="add-option" onclick={() => addTarget('aws-s3')}>⬛ {tr('imageHost.aws_s3')}</button>
+                <button class="add-option" onclick={() => addTarget('google-gcs')}>🌐 {tr('imageHost.google_gcs')}</button>
+              </div>
+            </div>
+          {/if}
         </div>
       {/if}
       <button class="btn btn-add" onclick={() => showAddMenu = !showAddMenu}>
@@ -563,6 +663,28 @@
     border: 1px solid var(--border-color);
     border-radius: 6px;
     background: var(--bg-primary);
+  }
+
+  .target-card.is-featured {
+    border-color: transparent;
+    background:
+      linear-gradient(var(--bg-primary), var(--bg-primary)) padding-box,
+      linear-gradient(135deg,
+        color-mix(in srgb, var(--accent-color) 65%, transparent),
+        color-mix(in srgb, var(--accent-color) 25%, transparent)
+      ) border-box;
+    border: 1px solid transparent;
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-color) 20%, transparent);
+  }
+
+  .featured-badge {
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    color: #fff;
+    background: linear-gradient(135deg, var(--accent-color), color-mix(in srgb, var(--accent-color) 65%, #ff8a00));
+    padding: 0.05rem 0.4rem;
+    border-radius: 3px;
+    letter-spacing: 0.02em;
   }
 
   .target-card-row {
@@ -706,6 +828,136 @@
     color: var(--text-primary);
   }
 
+  /* Picora hero card — featured entry in add-menu */
+  .picora-hero {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+    padding: 0.85rem 1rem;
+    border-radius: 10px;
+    cursor: pointer;
+    text-align: left;
+    border: 2px solid transparent;
+    background:
+      linear-gradient(135deg,
+        color-mix(in srgb, var(--accent-color) 8%, var(--bg-primary)),
+        color-mix(in srgb, #ff8a00 5%, var(--bg-primary))
+      ) padding-box,
+      linear-gradient(135deg,
+        var(--accent-color),
+        color-mix(in srgb, var(--accent-color) 50%, #ff8a00)
+      ) border-box;
+    transition: transform 0.15s ease, box-shadow 0.2s ease;
+  }
+
+  .picora-hero:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px color-mix(in srgb, var(--accent-color) 22%, transparent);
+  }
+
+  .picora-hero-icon {
+    font-size: 1.6rem;
+    flex-shrink: 0;
+    line-height: 1;
+  }
+
+  .picora-hero-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+
+  .picora-hero-title {
+    font-size: var(--font-size-base);
+    font-weight: 600;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .picora-hero-badge {
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    color: #fff;
+    background: linear-gradient(135deg,
+      var(--accent-color),
+      color-mix(in srgb, var(--accent-color) 65%, #ff8a00));
+    padding: 0.05rem 0.4rem;
+    border-radius: 3px;
+    letter-spacing: 0.02em;
+  }
+
+  .picora-hero-subtitle {
+    font-size: var(--font-size-xs);
+    color: var(--text-muted);
+    line-height: 1.4;
+  }
+
+  .picora-hero-cta {
+    flex-shrink: 0;
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    color: var(--accent-color);
+    white-space: nowrap;
+  }
+
+  .picora-hero:hover .picora-hero-cta {
+    color: color-mix(in srgb, var(--accent-color) 80%, #000);
+  }
+
+  /* Dropdown toggle for collapsed "Other providers" section */
+  .other-providers-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    width: 100%;
+    padding: 0.4rem 0.1rem;
+    margin-top: 0.3rem;
+    background: transparent;
+    border: none;
+    font-size: var(--font-size-xs);
+    color: var(--text-muted);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .other-providers-toggle:hover {
+    color: var(--text-secondary);
+  }
+
+  .other-providers-toggle .chevron {
+    display: inline-block;
+    font-size: 0.65rem;
+    transition: transform 0.18s ease;
+    color: var(--text-muted);
+  }
+
+  .other-providers-toggle.is-open .chevron {
+    transform: rotate(90deg);
+  }
+
+  .other-providers-label {
+    flex: 1;
+    text-align: left;
+  }
+
+  .other-providers-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 0.2rem;
+    animation: other-providers-in 0.18s ease-out;
+  }
+
+  @keyframes other-providers-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
   .btn {
     padding: 0.35rem 0.75rem;
     border: 1px solid var(--border-color);
@@ -814,11 +1066,55 @@
     border-color: var(--accent-color);
   }
 
+  .setting-hint {
+    font-size: var(--font-size-xs);
+    color: var(--text-muted);
+    line-height: 1.4;
+    margin: 0.2rem 0 0;
+  }
+
   .form-actions {
     display: flex;
-    justify-content: flex-end;
+    justify-content: space-between;
+    align-items: center;
     gap: 0.5rem;
     padding-top: 0.25rem;
+  }
+
+  .form-actions-right {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .btn-test {
+    background: transparent;
+    color: var(--text-secondary);
+    border-color: var(--border-color);
+  }
+
+  .btn-test:hover:not(:disabled) {
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+  }
+
+  .btn-test.testing {
+    color: var(--accent-color);
+    border-color: var(--accent-color);
+  }
+
+  .btn-test.success {
+    color: #28a745;
+    border-color: #28a745;
+  }
+
+  .btn-test.failed {
+    color: #dc3545;
+    border-color: #dc3545;
+  }
+
+  .btn-test:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 
   .import-targets {
