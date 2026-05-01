@@ -1953,7 +1953,12 @@
       "applyAll": "Apply all selected ({n})"
     },
     "statusbar": {
-      "tooltip": "KB Sync status — click for details"
+      "tooltip": "KB Sync status — click for details",
+      "errorLabel": "सिंक त्रुटि:"
+    },
+    "syncNow": "अभी सिंक करें",
+    "error": {
+      "targetMissing": "Picora खाता नहीं मिला — कृपया इस ज्ञान आधार को पुनः जोड़ें या सेटिंग में खाता पुनर्स्थापित करें।"
     }
   }
 }

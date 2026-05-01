@@ -2543,7 +2543,12 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="editor-wrapper" class:ready={isReady} class:has-outline={showOutline} bind:clientHeight={wrapperHeight} onclick={(e) => {
+<div class="editor-wrapper" class:ready={isReady} class:has-outline={showOutline} bind:clientHeight={wrapperHeight} oncontextmenu={(e) => {
+  // Right-click in empty area below content (outside .ProseMirror) — show editor context menu.
+  // Clicks inside .ProseMirror are handled by handleContextMenu (registered on proseMirrorEl)
+  // which calls stopPropagation(), so this handler only fires for the empty space.
+  handleContextMenu(e);
+}} onclick={(e) => {
   // Click on empty area or empty ProseMirror content → focus editor
   const target = e.target as HTMLElement;
   if (target === e.currentTarget || target.classList.contains('editor-root') || target.classList.contains('editor-content-area')) {

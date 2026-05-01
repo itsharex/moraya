@@ -109,15 +109,6 @@
     return url.replace(/^https?:\/\//, '').replace(/\.git$/, '');
   }
 
-  function picoraButtonLabel(kb: KnowledgeBase): string {
-    // Unbound: icon only — full label lives in the tooltip (matches sibling icon buttons).
-    if (!kb.picoraBinding) return '☁';
-    const state = syncStates.get(kb.id);
-    if (state?.status === 'conflict') return `☁ ⚠ ${state.conflictCount}`;
-    if (state?.status === 'error') return '☁ ✗';
-    if (state?.status === 'syncing') return '☁ ⟳';
-    return `☁ ${kb.picoraBinding.picoraKbName.slice(0, 12)}`;
-  }
 
   function picoraButtonClass(kb: KnowledgeBase): string {
     if (!kb.picoraBinding) return '';
@@ -181,7 +172,7 @@
                   onclick={() => { picoraBindingKb = kb; }}
                   title={kb.picoraBinding ? $t('kbSync.card.settings') : $t('kbSync.card.bind')}
                 >
-                  {picoraButtonLabel(kb)}
+                  <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" style="vertical-align:-1px;display:inline-block" aria-hidden="true"><path fill-rule="evenodd" d="M8 8m-7 0a7 7 0 1 0 14 0a7 7 0 1 0-14 0zM8 8m-4.5 0a4.5 4.5 0 1 0 9 0a4.5 4.5 0 1 0-9 0zM8 8m-2.5 0a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0z"/></svg>{#if kb.picoraBinding}{@const _s = syncStates.get(kb.id)}{#if _s?.status === 'conflict'} ⚠{_s.conflictCount}{:else if _s?.status === 'error'} ✗{:else if _s?.status === 'syncing'} ⟳{:else} {kb.picoraBinding.picoraKbName.slice(0, 12)}{/if}{/if}
                 </button>
                 {#if kb.git}
                   <button class="kb-action-btn" onclick={() => unbindGit(kb)} title={$t('git.unbind')}>
@@ -422,7 +413,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     /* Override the fixed 1.5rem width inherited from .kb-action-btn so the bound-state
-       label (`☁ <kbName>`) is not truncated. Unbound state shows icon-only via JS. */
+       label (kbName suffix) is not truncated. Unbound state shows lens icon only. */
     width: auto;
     min-width: 1.5rem;
     max-width: 140px;

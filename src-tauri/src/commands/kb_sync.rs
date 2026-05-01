@@ -54,10 +54,17 @@ pub struct SyncOp {
     pub op: String, // "upsert" | "delete"
     #[serde(rename = "relativePath")]
     pub relative_path: String,
+    // Optional fields use `skip_serializing_if` so missing values are
+    // omitted from the wire format entirely. Picora's validator rejects
+    // `null` for these fields ("Expected string, received null") — only
+    // "present string" or "absent" are accepted. In particular:
+    //   • `delete` ops carry only op + relativePath
+    //   • first-sync `upsert` ops have no baseUpdatedAt
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
-    #[serde(rename = "sourceHash")]
+    #[serde(rename = "sourceHash", skip_serializing_if = "Option::is_none")]
     pub source_hash: Option<String>,
-    #[serde(rename = "baseUpdatedAt")]
+    #[serde(rename = "baseUpdatedAt", skip_serializing_if = "Option::is_none")]
     pub base_updated_at: Option<String>,
 }
 
@@ -297,7 +304,9 @@ pub async fn picora_kb_manifest(
         .map_err(|_| "Network error contacting Picora".to_string())?;
 
     if !res.status().is_success() {
-        return Err(sanitize_status(res.status().as_u16(), "manifest"));
+        let status = res.status().as_u16();
+        let body = res.text().await.unwrap_or_default();
+        return Err(build_error_with_body(status, &body, "manifest"));
     }
 
     let body: serde_json::Value = res
@@ -305,12 +314,20 @@ pub async fn picora_kb_manifest(
         .await
         .map_err(|_| "Picora returned invalid JSON".to_string())?;
 
-    serde_json::from_value(
-        body.get("data")
-            .cloned()
-            .unwrap_or(serde_json::Value::Array(vec![])),
-    )
-    .map_err(|_| "Failed to parse KB manifest".to_string())
+    // Picora `/v1/kbs/{id}/manifest` may return any of three shapes (mirrors
+    // the evolution of `/v1/kbs` itself — see `picora_kb_list`):
+    //   1. `[...]`                                  (bare array)
+    //   2. `{ "data": [...] }`                      (legacy wrapper)
+    //   3. `{ "data": { "items": [...], ... } }`    (paginated wrapper, v0.17.1+)
+    let data = body.get("data").unwrap_or(&body);
+    let items_val = data
+        .get("items")
+        .cloned()
+        .or_else(|| data.as_array().map(|arr| serde_json::Value::Array(arr.clone())))
+        .unwrap_or(serde_json::Value::Array(vec![]));
+
+    serde_json::from_value::<Vec<ManifestEntry>>(items_val)
+        .map_err(|e| format!("Failed to parse KB manifest: {}", e))
 }
 
 /// Batch sync operations (upsert + delete) against a KB.
@@ -342,7 +359,9 @@ pub async fn picora_kb_sync_batch(
         .map_err(|_| "Network error contacting Picora".to_string())?;
 
     if !res.status().is_success() {
-        return Err(sanitize_status(res.status().as_u16(), "sync-batch"));
+        let status = res.status().as_u16();
+        let body = res.text().await.unwrap_or_default();
+        return Err(build_error_with_body(status, &body, "sync-batch"));
     }
 
     let body: serde_json::Value = res
@@ -388,7 +407,9 @@ pub async fn picora_kb_raw(
         .map_err(|_| "Network error contacting Picora".to_string())?;
 
     if !res.status().is_success() {
-        return Err(sanitize_status(res.status().as_u16(), "raw"));
+        let status = res.status().as_u16();
+        let body = res.text().await.unwrap_or_default();
+        return Err(build_error_with_body(status, &body, "raw"));
     }
 
     res.text()
@@ -727,5 +748,136 @@ mod tests {
         // serde error should describe what went wrong so we can debug
         // (mentions the offending value or expected type)
         assert!(err.contains("twelve") || err.contains("i64"), "{err}");
+    }
+
+    /// Inline replica of `picora_kb_manifest`'s response parser. Keep in sync
+    /// with the live parser. Picora's manifest endpoint went through the
+    /// same shape evolution as `/v1/kbs` — so we accept the same three forms.
+    fn parse_kb_manifest_body(body: serde_json::Value) -> Result<Vec<ManifestEntry>, String> {
+        let data = body.get("data").unwrap_or(&body);
+        let items_val = data
+            .get("items")
+            .cloned()
+            .or_else(|| data.as_array().map(|arr| serde_json::Value::Array(arr.clone())))
+            .unwrap_or(serde_json::Value::Array(vec![]));
+        serde_json::from_value::<Vec<ManifestEntry>>(items_val)
+            .map_err(|e| format!("Failed to parse KB manifest: {}", e))
+    }
+
+    fn sample_manifest_entry() -> serde_json::Value {
+        serde_json::json!({
+            "relativePath": "notes/foo.md",
+            "sourceHash": "abc123",
+            "sizeBytes": 1024,
+            "updatedAt": "2026-04-30T12:00:00Z",
+        })
+    }
+
+    #[test]
+    fn picora_kb_manifest_parses_data_array_wrapper() {
+        let body = serde_json::json!({ "data": [sample_manifest_entry()] });
+        let entries = parse_kb_manifest_body(body).expect("data-array shape should parse");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].relative_path, "notes/foo.md");
+    }
+
+    #[test]
+    fn picora_kb_manifest_parses_data_items_pagination_wrapper() {
+        // Paginated shape — this is the case that was producing
+        // "Failed to parse KB manifest" before the fix.
+        let body = serde_json::json!({
+            "data": { "items": [sample_manifest_entry()], "nextCursor": null, "total": 1 },
+        });
+        let entries = parse_kb_manifest_body(body).expect("paginated shape should parse");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].source_hash, "abc123");
+    }
+
+    #[test]
+    fn picora_kb_manifest_parses_bare_array() {
+        let body = serde_json::json!([sample_manifest_entry()]);
+        let entries = parse_kb_manifest_body(body).expect("bare array should parse");
+        assert_eq!(entries.len(), 1);
+    }
+
+    #[test]
+    fn picora_kb_manifest_returns_empty_for_missing_data() {
+        let body = serde_json::json!({});
+        let entries = parse_kb_manifest_body(body).expect("empty object falls back to []");
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn sync_op_upsert_first_sync_omits_base_updated_at() {
+        // First-time upsert: no baseUpdatedAt. Picora rejects `null` for
+        // string fields, so the serialized JSON must omit the key entirely.
+        let op = SyncOp {
+            op: "upsert".to_string(),
+            relative_path: "notes/foo.md".to_string(),
+            content: Some("# hello".to_string()),
+            source_hash: Some("abc123".to_string()),
+            base_updated_at: None,
+        };
+        let json = serde_json::to_value(&op).unwrap();
+        assert_eq!(json["op"], "upsert");
+        assert_eq!(json["relativePath"], "notes/foo.md");
+        assert_eq!(json["content"], "# hello");
+        assert_eq!(json["sourceHash"], "abc123");
+        assert!(
+            json.get("baseUpdatedAt").is_none(),
+            "baseUpdatedAt must be absent (not null) when None: {}",
+            json
+        );
+        // Verify no field anywhere in the JSON is null
+        let s = serde_json::to_string(&op).unwrap();
+        assert!(!s.contains("null"), "serialized op must contain no null values: {s}");
+    }
+
+    #[test]
+    fn sync_op_upsert_subsequent_sync_includes_base_updated_at() {
+        let op = SyncOp {
+            op: "upsert".to_string(),
+            relative_path: "notes/foo.md".to_string(),
+            content: Some("# updated".to_string()),
+            source_hash: Some("def456".to_string()),
+            base_updated_at: Some("2026-04-30T12:00:00Z".to_string()),
+        };
+        let json = serde_json::to_value(&op).unwrap();
+        assert_eq!(json["baseUpdatedAt"], "2026-04-30T12:00:00Z");
+    }
+
+    #[test]
+    fn sync_op_delete_omits_all_optional_fields() {
+        // Delete ops carry only op + relativePath. None of the three optional
+        // fields should appear in the wire format.
+        let op = SyncOp {
+            op: "delete".to_string(),
+            relative_path: "notes/old.md".to_string(),
+            content: None,
+            source_hash: None,
+            base_updated_at: None,
+        };
+        let json = serde_json::to_value(&op).unwrap();
+        assert_eq!(json["op"], "delete");
+        assert_eq!(json["relativePath"], "notes/old.md");
+        assert!(json.get("content").is_none(), "delete must omit content: {json}");
+        assert!(json.get("sourceHash").is_none(), "delete must omit sourceHash: {json}");
+        assert!(json.get("baseUpdatedAt").is_none(), "delete must omit baseUpdatedAt: {json}");
+        let s = serde_json::to_string(&op).unwrap();
+        assert!(!s.contains("null"), "serialized delete op must contain no null values: {s}");
+    }
+
+    #[test]
+    fn picora_kb_manifest_surfaces_serde_error_message() {
+        // sizeBytes as string — should produce a descriptive error
+        let bad = serde_json::json!({ "data": { "items": [{
+            "relativePath": "x.md",
+            "sourceHash": "h",
+            "sizeBytes": "big",
+            "updatedAt": "",
+        }] } });
+        let err = parse_kb_manifest_body(bad).expect_err("should fail with descriptive message");
+        assert!(err.starts_with("Failed to parse KB manifest:"), "{err}");
+        assert!(err.contains("big") || err.contains("i64"), "{err}");
     }
 }

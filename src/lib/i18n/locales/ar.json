@@ -1953,7 +1953,12 @@
       "applyAll": "Apply all selected ({n})"
     },
     "statusbar": {
-      "tooltip": "KB Sync status — click for details"
+      "tooltip": "KB Sync status — click for details",
+      "errorLabel": "خطأ في المزامنة:"
+    },
+    "syncNow": "مزامنة الآن",
+    "error": {
+      "targetMissing": "لم يتم العثور على حساب Picora — يرجى إعادة ربط قاعدة المعرفة هذه أو استعادة الحساب في الإعدادات."
     }
   }
 }

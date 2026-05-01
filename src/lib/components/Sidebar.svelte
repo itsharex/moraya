@@ -11,6 +11,8 @@
   import FileContextMenu from './FileContextMenu.svelte';
   import LockIndicator from './LockIndicator.svelte';
   import type { Lock } from '$lib/services/review/types';
+  import { kbSyncStore, runSync } from '$lib/services/kb-sync/sync-service';
+  import type { KbSyncState } from '$lib/services/kb-sync/types';
 
   let {
     onFileSelect,
@@ -113,7 +115,66 @@
     }
     activeKBId = state.activeKnowledgeBaseId;
   });
-  onDestroy(() => { unsubFiles(); });
+  // Per-KB sync state map (drives dropdown badge + sync-button spinner state).
+  let syncStates = $state<Map<string, KbSyncState>>(new Map());
+  const unsubSync = kbSyncStore.subscribe(map => { syncStates = map; });
+  onDestroy(() => { unsubFiles(); unsubSync(); });
+
+  /** True when the active KB has Picora binding — used to render the sync button. */
+  let activeKbBound = $derived(
+    knowledgeBases.find(k => k.id === activeKBId)?.picoraBinding != null
+  );
+
+  /** Sync status for a KB (idle | syncing | conflict | error | unbound). */
+  function kbSyncStatus(kbId: string): string {
+    return syncStates.get(kbId)?.status ?? 'idle';
+  }
+
+  /** Trigger a manual sync of the currently-active KB. */
+  async function triggerSyncActiveKb() {
+    const kb = knowledgeBases.find(k => k.id === activeKBId);
+    if (!kb?.picoraBinding) return;
+    const settings = settingsStore.getState();
+    const target = settings.imageHostTargets.find(t => t.id === kb.picoraBinding!.picoraTargetId);
+    if (!target) {
+      // Picora account was deleted after binding — surface the error.
+      const errMsg = $t('kbSync.error.targetMissing');
+      filesStore.updateKbSyncReport(kb.id, {
+        lastSyncAt: new Date().toISOString(),
+        lastSyncReport: null,
+        lastSyncError: errMsg,
+      });
+      kbSyncStore.setState(kb.id, { status: 'error', lastError: errMsg });
+      return;
+    }
+    try {
+      const report = await runSync(kb.picoraBinding, kb, target, false);
+      const numConflicts = typeof report.conflicts === 'number'
+        ? report.conflicts
+        : (report.conflicts as unknown as { length: number }).length;
+      filesStore.updateKbSyncReport(kb.id, {
+        lastSyncAt: new Date().toISOString(),
+        lastSyncReport: {
+          uploaded: report.uploaded,
+          downloaded: report.downloaded,
+          deletedRemote: report.deletedRemote,
+          deletedLocal: report.deletedLocal,
+          skipped: report.skipped,
+          conflicts: numConflicts,
+        },
+        lastSyncError: null,
+      });
+    } catch (e) {
+      const errMsg = typeof e === 'string' ? e : (e instanceof Error ? e.message : 'Sync failed');
+      console.error('[KbSync] Sync failed for KB', kb.id, ':', errMsg);
+      kbSyncStore.setState(kb.id, { status: 'error', lastError: errMsg });
+      filesStore.updateKbSyncReport(kb.id, {
+        lastSyncAt: new Date().toISOString(),
+        lastSyncReport: null,
+        lastSyncError: errMsg,
+      });
+    }
+  }
 
   $effect(() => {
     // Close dropdown when clicking outside
@@ -945,9 +1006,28 @@
         <path d="M4.427 6.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 6H4.604a.25.25 0 00-.177.427z"/>
       </svg>
     </button>
+    {#if activeKbBound}
+      {@const status = kbSyncStatus(activeKBId ?? '')}
+      <button
+        class="kb-sync-btn"
+        class:syncing={status === 'syncing'}
+        class:error={status === 'error'}
+        class:conflict={status === 'conflict'}
+        onclick={triggerSyncActiveKb}
+        disabled={status === 'syncing'}
+        title={$t('kbSync.syncNow')}
+      >
+        <!-- Wrap icon in inner span so rotation only spins the glyph,
+             not the button border (which would tilt the rounded rectangle). -->
+        <span class="kb-sync-btn-icon" class:spin={status === 'syncing'}>
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M8 8m-7 0a7 7 0 1 0 14 0a7 7 0 1 0-14 0zM8 8m-4.5 0a4.5 4.5 0 1 0 9 0a4.5 4.5 0 1 0-9 0zM8 8m-2.5 0a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0z"/></svg>
+        </span>
+      </button>
+    {/if}
     {#if showKBDropdown}
       <div class="kb-dropdown">
         {#each [...knowledgeBases].sort((a, b) => b.lastAccessedAt - a.lastAccessedAt) as kb}
+          {@const status = kbSyncStatus(kb.id)}
           <button
             class="kb-dropdown-item"
             class:active={kb.id === activeKBId}
@@ -959,6 +1039,15 @@
               <span class="kb-check-spacer"></span>
             {/if}
             <span class="kb-dropdown-name">{kb.name}</span>
+            {#if kb.picoraBinding}
+              <span
+                class="kb-sync-badge"
+                class:syncing={status === 'syncing'}
+                class:error={status === 'error'}
+                class:conflict={status === 'conflict'}
+                title={$t('kbSync.statusbar.tooltip')}
+              ><svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" style="vertical-align:-1px;display:inline-block" aria-hidden="true"><path fill-rule="evenodd" d="M8 8m-7 0a7 7 0 1 0 14 0a7 7 0 1 0-14 0zM8 8m-4.5 0a4.5 4.5 0 1 0 9 0a4.5 4.5 0 1 0-9 0zM8 8m-2.5 0a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0z"/></svg>{status === 'error' ? ' ✗' : status === 'conflict' ? ' ⚠' : ''}</span>
+            {/if}
           </button>
         {/each}
         <div class="kb-dropdown-divider"></div>
@@ -1791,6 +1880,59 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    flex: 1;
+  }
+
+  /* Sync badge in dropdown — shows ☁ icon next to KBs with Picora binding */
+  .kb-sync-badge {
+    display: inline-block;
+    margin-left: 0.4rem;
+    font-size: 0.85em;
+    color: var(--color-success, #38a169);
+    flex-shrink: 0;
+    line-height: 1;
+    transform-origin: center;
+  }
+  .kb-sync-badge.syncing { color: var(--accent-color); animation: kb-sync-spin 1s linear infinite; }
+  .kb-sync-badge.error { color: var(--color-error, #e53e3e); }
+  .kb-sync-badge.conflict { color: var(--warning-color, #e8a838); }
+
+  /* Manual sync button next to KB switcher */
+  .kb-sync-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 0.25rem;
+    padding: 0 0.35rem;
+    height: 1.5rem;
+    border: 1px solid var(--border-light);
+    background: transparent;
+    color: var(--color-success, #38a169);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: background var(--transition-fast), border-color var(--transition-fast);
+  }
+  .kb-sync-btn:hover:not(:disabled) {
+    background: var(--bg-hover);
+    border-color: var(--color-success, #38a169);
+  }
+  .kb-sync-btn:disabled { cursor: not-allowed; opacity: 0.7; }
+  .kb-sync-btn.syncing { color: var(--accent-color); border-color: var(--accent-color); }
+  .kb-sync-btn.error { color: var(--color-error, #e53e3e); border-color: var(--color-error, #e53e3e); }
+  .kb-sync-btn.conflict { color: var(--warning-color, #e8a838); border-color: var(--warning-color, #e8a838); }
+
+  /* Inner-span rotation — only spins the glyph, leaves the button border still. */
+  .kb-sync-btn-icon {
+    display: inline-block;
+    line-height: 1;
+    transform-origin: center;
+  }
+  .kb-sync-btn-icon.spin { animation: kb-sync-spin 1s linear infinite; }
+
+  @keyframes kb-sync-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
   }
 
   .kb-dropdown-divider {

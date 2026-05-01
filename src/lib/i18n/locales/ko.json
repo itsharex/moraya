@@ -1953,7 +1953,12 @@
       "applyAll": "Apply all selected ({n})"
     },
     "statusbar": {
-      "tooltip": "KB Sync status — click for details"
+      "tooltip": "KB Sync status — click for details",
+      "errorLabel": "동기화 오류:"
+    },
+    "syncNow": "지금 동기화",
+    "error": {
+      "targetMissing": "Picora 계정을 찾을 수 없습니다 — 이 지식 베이스를 다시 연결하거나 설정에서 계정을 복원해 주세요."
     }
   }
 }

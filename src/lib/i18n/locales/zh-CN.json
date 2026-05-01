@@ -2032,7 +2032,12 @@
       "applyAll": "应用全部所选（{n}）"
     },
     "statusbar": {
-      "tooltip": "KB 同步状态 — 点击查看详情"
+      "tooltip": "KB 同步状态 — 点击查看详情",
+      "errorLabel": "同步错误："
+    },
+    "syncNow": "立即同步",
+    "error": {
+      "targetMissing": "找不到 Picora 账号，请重新绑定此知识库，或在设置中恢复账号。"
     }
   }
 }

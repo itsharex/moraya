@@ -2032,7 +2032,12 @@
       "applyAll": "Apply all selected ({n})"
     },
     "statusbar": {
-      "tooltip": "KB Sync status — click for details"
+      "tooltip": "KB Sync status — click for details",
+      "errorLabel": "Sync error:"
+    },
+    "syncNow": "Sync now",
+    "error": {
+      "targetMissing": "Picora account not found — please re-bind this KB or restore the account in Settings."
     }
   }
 }

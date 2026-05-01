@@ -69,11 +69,11 @@
     updateAvailable = state.checkStatus === 'available';
   });
   filesStore.subscribe(state => {
-    const activeKb = state.activeKnowledgeBaseId
-      ? state.knowledgeBases.find(k => k.id === state.activeKnowledgeBaseId)
-      : null;
-    if (activeKb?.picoraBinding) {
-      // will be filled by kbSyncStore subscription below
+    const activeId = state.activeKnowledgeBaseId;
+    const activeKb = activeId ? state.knowledgeBases.find(k => k.id === activeId) : null;
+    if (activeKb?.picoraBinding && activeId) {
+      // Snapshot current kbSyncStore so the icon shows immediately when a bound KB is selected.
+      activeKbSyncState = kbSyncStore.getState(activeId);
     } else {
       activeKbSyncState = null;
     }
@@ -160,10 +160,23 @@
         class:sync-conflict={activeKbSyncState.status === 'conflict'}
         class:sync-error={activeKbSyncState.status === 'error'}
         onclick={() => { showSyncPopover = !showSyncPopover; }}
-        title={$t('kbSync.statusbar.tooltip')}
+        title={activeKbSyncState.status === 'error' && activeKbSyncState.lastError
+          ? activeKbSyncState.lastError
+          : $t('kbSync.statusbar.tooltip')}
       >
-        ☁{#if activeKbSyncState.status === 'syncing'} ⟳{:else if activeKbSyncState.status === 'conflict'} ⚠{activeKbSyncState.conflictCount}{:else if activeKbSyncState.status === 'error'} ✗{:else} ✓{/if}
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" style="vertical-align:-1px;display:inline-block" aria-hidden="true"><path fill-rule="evenodd" d="M8 8m-7 0a7 7 0 1 0 14 0a7 7 0 1 0-14 0zM8 8m-4.5 0a4.5 4.5 0 1 0 9 0a4.5 4.5 0 1 0-9 0zM8 8m-2.5 0a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0z"/></svg>{#if activeKbSyncState.status === 'conflict'} ⚠{activeKbSyncState.conflictCount}{:else if activeKbSyncState.status === 'error'} ✗{#if activeKbSyncState.lastError} {activeKbSyncState.lastError.length > 35 ? activeKbSyncState.lastError.slice(0, 35) + '…' : activeKbSyncState.lastError}{/if}{:else if activeKbSyncState.status === 'idle'} ✓{/if}
       </span>
+      {#if showSyncPopover && activeKbSyncState.status === 'error' && activeKbSyncState.lastError}
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
+        <div class="kb-sync-popover" onclick={() => { showSyncPopover = false; }}>
+          <div class="kb-sync-popover-inner" onclick={(e) => e.stopPropagation()}>
+            <span class="kb-sync-popover-label">{$t('kbSync.statusbar.errorLabel')}</span>
+            <span class="kb-sync-popover-msg">{activeKbSyncState.lastError}</span>
+            <button class="kb-sync-popover-close" onclick={() => { showSyncPopover = false; }}>&times;</button>
+          </div>
+        </div>
+      {/if}
     {/if}
   </div>
   <div class="statusbar-right">
@@ -426,7 +439,55 @@
 
   .kb-sync-icon:hover { background: var(--bg-hover); }
   .kb-sync-icon.sync-idle { color: var(--color-success, #38a169); }
-  .kb-sync-icon.sync-syncing { color: var(--accent-color); animation: spin 1s linear infinite; }
+  .kb-sync-icon.sync-syncing { color: var(--accent-color); }
+
   .kb-sync-icon.sync-conflict { color: var(--warning-color, #e8a838); }
   .kb-sync-icon.sync-error { color: var(--color-error, #e53e3e); }
+
+  .kb-sync-popover {
+    position: fixed;
+    inset: 0;
+    z-index: 500;
+  }
+
+  .kb-sync-popover-inner {
+    position: absolute;
+    bottom: calc(var(--statusbar-height) + 4px);
+    left: 1rem;
+    max-width: 360px;
+    background: var(--bg-primary);
+    border: 1px solid var(--color-error, #e53e3e);
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    font-size: var(--font-size-xs);
+  }
+
+  .kb-sync-popover-label {
+    color: var(--color-error, #e53e3e);
+    font-weight: 600;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .kb-sync-popover-msg {
+    color: var(--text-primary);
+    word-break: break-all;
+    flex: 1;
+  }
+
+  .kb-sync-popover-close {
+    flex-shrink: 0;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+    padding: 0 0.1rem;
+  }
+  .kb-sync-popover-close:hover { color: var(--text-primary); }
 </style>

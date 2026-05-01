@@ -141,7 +141,9 @@
                   · ↑{kb.picoraBinding.lastSyncReport.uploaded} ↓{kb.picoraBinding.lastSyncReport.downloaded}
                 {/if}
                 {#if kb.picoraBinding.lastSyncError}
-                  <span class="sync-error">({kb.picoraBinding.lastSyncError.slice(0, 60)})</span>
+                  <span class="sync-error" title={kb.picoraBinding.lastSyncError}>
+                    ({kb.picoraBinding.lastSyncError.slice(0, 120)}{kb.picoraBinding.lastSyncError.length > 120 ? '…' : ''})
+                  </span>
                 {/if}
               </span>
             {:else}

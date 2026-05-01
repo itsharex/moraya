@@ -1949,7 +1949,12 @@
       "applyAll": "Apply all selected ({n})"
     },
     "statusbar": {
-      "tooltip": "KB Sync status — click for details"
+      "tooltip": "KB Sync status — click for details",
+      "errorLabel": "Error de sincronización:"
+    },
+    "syncNow": "Sincronizar ahora",
+    "error": {
+      "targetMissing": "Cuenta de Picora no encontrada — vuelva a vincular esta base de conocimiento o restaure la cuenta en Configuración."
     }
   }
 }

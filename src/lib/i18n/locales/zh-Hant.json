@@ -1953,7 +1953,12 @@
       "applyAll": "套用全部所選（{n}）"
     },
     "statusbar": {
-      "tooltip": "KB 同步狀態 — 點擊查看詳情"
+      "tooltip": "KB 同步狀態 — 點擊查看詳情",
+      "errorLabel": "同步錯誤："
+    },
+    "syncNow": "立即同步",
+    "error": {
+      "targetMissing": "找不到 Picora 帳號，請重新綁定此知識庫，或在設定中恢復帳號。"
     }
   }
 }
