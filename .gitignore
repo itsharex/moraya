@@ -111,5 +111,5 @@ watermarks.local.json.ots
 # Claude Code project instructions (local only)
 /CLAUDE.md
 
-# Sibling repo symlink (moraya-markdown-core lives in its own git repo)
-/moraya-markdown-core
+# Sibling repo symlink (moraya-core lives in its own git repo)
+/moraya-core
