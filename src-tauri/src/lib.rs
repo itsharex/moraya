@@ -687,6 +687,7 @@ pub fn run() {
             commands::file::read_resource_file,
             commands::file::write_file,
             commands::file::write_file_binary,
+            commands::file::write_file_bytes,
             commands::file::read_dir_recursive,
             commands::file::migrate_voice_profiles_dir,
             commands::file::create_markdown_file,

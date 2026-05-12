@@ -304,56 +304,63 @@ function sanitizeHtml(html: string): string {
   return doc.body.innerHTML;
 }
 
-/**
- * Capture the live Milkdown editor DOM as a canvas.
- * This preserves KaTeX-rendered math, styled code blocks, tables, etc.
- */
-async function captureEditorToCanvas(): Promise<HTMLCanvasElement> {
-  const editorEl = document.querySelector('.moraya-editor') as HTMLElement | null;
-  if (!editorEl) {
-    throw new Error('no-editor');
-  }
+// Container CSS width used for all export rendering. Keep stable so layout is
+// reproducible across single-canvas and per-page paths.
+const EXPORT_CONTAINER_WIDTH = 800;
 
-  // Clone the editor into a hidden container with white background
+// Conservative single-axis canvas dimension cap. Chromium hard-limits at 32767
+// but falls back to blank above ~16384 on many GPUs; WebKit on macOS has
+// similar behaviour. We treat anything above this as a hard error so the
+// caller sees a real failure instead of a silently-blank PDF.
+const BROWSER_CANVAS_MAX = 16384;
+
+// A4 portrait, 10mm margins on each side → 190×277 mm content area.
+const PDF_PAGE_WIDTH_MM = 210;
+const PDF_PAGE_HEIGHT_MM = 297;
+const PDF_MARGIN_MM = 10;
+const PDF_CONTENT_WIDTH_MM = PDF_PAGE_WIDTH_MM - 2 * PDF_MARGIN_MM;
+const PDF_CONTENT_HEIGHT_MM = PDF_PAGE_HEIGHT_MM - 2 * PDF_MARGIN_MM;
+
+// CSS pixels of vertical container content that correspond to one PDF page
+// (at the EXPORT_CONTAINER_WIDTH used for layout). Derived from the A4
+// content aspect ratio so slicing is geometry-consistent.
+const PAGE_CSS_PX_HEIGHT =
+  EXPORT_CONTAINER_WIDTH * (PDF_CONTENT_HEIGHT_MM / PDF_CONTENT_WIDTH_MM);
+
+/**
+ * Build an offscreen container hosting the live editor clone, or null if the
+ * editor isn't mounted. Caller is responsible for calling document.body.removeChild.
+ */
+function buildEditorContainer(): HTMLElement | null {
+  const editorEl = document.querySelector('.moraya-editor') as HTMLElement | null;
+  if (!editorEl) return null;
+
   const container = document.createElement('div');
   container.style.cssText =
-    'position:fixed;left:-9999px;top:0;width:800px;background:#fff;padding:2rem 1rem;';
+    `position:fixed;left:-9999px;top:0;width:${EXPORT_CONTAINER_WIDTH}px;background:#fff;padding:2rem 1rem;`;
 
   const clone = editorEl.cloneNode(true) as HTMLElement;
   clone.removeAttribute('contenteditable');
   clone.style.outline = 'none';
   clone.style.caretColor = 'transparent';
-  // Remove ProseMirror selection artifacts
   clone.querySelectorAll('.ProseMirror-selectednode, .ProseMirror-gapcursor').forEach((el) => el.remove());
 
   container.appendChild(clone);
   document.body.appendChild(container);
-
-  try {
-    return await html2canvas(container, {
-      backgroundColor: '#ffffff',
-      scale: 2,
-      useCORS: true,
-      logging: false,
-    });
-  } finally {
-    document.body.removeChild(container);
-  }
+  return container;
 }
 
 /**
- * Render markdown HTML in a hidden container and capture as canvas.
- * Fallback when live editor is not available (e.g. source mode).
+ * Build an offscreen container from rendered HTML (fallback path for source mode).
  */
-async function renderHtmlToCanvas(htmlContent: string): Promise<HTMLCanvasElement> {
+function buildHtmlContainer(htmlContent: string): HTMLElement {
   const container = document.createElement('div');
   container.style.cssText =
-    'position:fixed;left:-9999px;top:0;width:800px;background:#fff;padding:2rem 1rem;';
+    `position:fixed;left:-9999px;top:0;width:${EXPORT_CONTAINER_WIDTH}px;background:#fff;padding:2rem 1rem;`;
 
   const parser = new DOMParser();
   const doc = parser.parseFromString(htmlContent, 'text/html');
 
-  // Apply styles from the parsed document
   doc.querySelectorAll('style').forEach((style) => {
     container.appendChild(style.cloneNode(true));
   });
@@ -363,88 +370,190 @@ async function renderHtmlToCanvas(htmlContent: string): Promise<HTMLCanvasElemen
   container.appendChild(contentDiv);
 
   document.body.appendChild(container);
+  return container;
+}
 
-  try {
-    return await html2canvas(container, {
-      backgroundColor: '#ffffff',
-      scale: 2,
-      useCORS: true,
-      logging: false,
-    });
-  } finally {
-    document.body.removeChild(container);
+/**
+ * Get an offscreen render container for the current document.
+ * Prefers the live editor clone; falls back to re-rendered HTML.
+ * Caller MUST detach the returned container from document.body when done.
+ */
+async function getDocumentContainer(markdown: string): Promise<HTMLElement> {
+  const editorContainer = buildEditorContainer();
+  if (editorContainer) return editorContainer;
+  const htmlContent = await markdownToHtml(markdown, true);
+  return buildHtmlContainer(htmlContent);
+}
+
+/**
+ * Throw a descriptive error if a canvas would exceed the browser's renderable
+ * dimension cap. Prevents the silent-blank-canvas failure mode behind blank
+ * PDF exports for very long documents on Windows WebView2.
+ */
+function assertCanvasFits(width: number, height: number, where: string): void {
+  if (width > BROWSER_CANVAS_MAX || height > BROWSER_CANVAS_MAX) {
+    throw new Error(
+      `Canvas too large for ${where} (${Math.round(width)}×${Math.round(height)}). ` +
+        `Browsers cap canvas dimensions near ${BROWSER_CANVAS_MAX}px on each axis; ` +
+        'try splitting the document or lowering the export scale.',
+    );
   }
 }
 
 /**
- * Get a canvas of the current document content.
- * Tries the live editor first (best quality), falls back to HTML conversion.
+ * Pick a render scale based on document length so long docs stay within memory
+ * and per-page canvas budgets. Single-canvas paths use a stricter cap because
+ * the entire document collapses to one canvas.
  */
-async function getDocumentCanvas(markdown: string): Promise<HTMLCanvasElement> {
-  try {
-    return await captureEditorToCanvas();
-  } catch {
-    const htmlContent = await markdownToHtml(markdown, true);
-    return await renderHtmlToCanvas(htmlContent);
+function pickAdaptiveScale(totalCssHeight: number, mode: 'single' | 'paged'): number {
+  if (mode === 'single') {
+    // Tightest constraint: full doc height × scale must stay under canvas cap.
+    const maxByCanvas = BROWSER_CANVAS_MAX / Math.max(1, totalCssHeight);
+    if (maxByCanvas >= 2) return 2;
+    if (maxByCanvas >= 1.5) return 1.5;
+    if (maxByCanvas >= 1) return 1;
+    return Math.max(0.5, maxByCanvas);
   }
+  // Paged: each page canvas is small; scale only affects memory/PDF size.
+  const totalPages = Math.ceil(totalCssHeight / PAGE_CSS_PX_HEIGHT);
+  if (totalPages > 300) return 1;
+  if (totalPages > 100) return 1.5;
+  return 2;
+}
+
+/**
+ * Capture an offscreen container as a single canvas. Used for PNG export.
+ * Throws if the resulting canvas would exceed the browser's dimension cap.
+ */
+async function captureContainerAsSingleCanvas(container: HTMLElement): Promise<HTMLCanvasElement> {
+  const totalHeight = container.offsetHeight;
+  const scale = pickAdaptiveScale(totalHeight, 'single');
+  assertCanvasFits(EXPORT_CONTAINER_WIDTH * scale, totalHeight * scale, 'image export');
+  return await html2canvas(container, {
+    backgroundColor: '#ffffff',
+    scale,
+    useCORS: true,
+    logging: false,
+    windowWidth: EXPORT_CONTAINER_WIDTH,
+  });
+}
+
+/**
+ * Capture an offscreen container as N small page-sized canvases by clipping
+ * with html2canvas's `y` + `height` options. This avoids producing a single
+ * giant canvas (root cause of the 200-page blank-PDF bug — the per-axis canvas
+ * cap is hit and Chromium/WebKit silently return an empty canvas).
+ */
+async function captureContainerAsPages(container: HTMLElement): Promise<{
+  canvases: HTMLCanvasElement[];
+  scale: number;
+}> {
+  const totalHeight = container.offsetHeight;
+  if (totalHeight <= 0) {
+    throw new Error('Document container has zero height; nothing to export.');
+  }
+
+  const scale = pickAdaptiveScale(totalHeight, 'paged');
+  const pageCount = Math.max(1, Math.ceil(totalHeight / PAGE_CSS_PX_HEIGHT));
+
+  // Sanity check: per-page output canvas dimensions.
+  assertCanvasFits(EXPORT_CONTAINER_WIDTH * scale, PAGE_CSS_PX_HEIGHT * scale, 'PDF page');
+
+  const canvases: HTMLCanvasElement[] = [];
+  for (let i = 0; i < pageCount; i++) {
+    const y = i * PAGE_CSS_PX_HEIGHT;
+    const h = Math.min(PAGE_CSS_PX_HEIGHT, totalHeight - y);
+    if (h <= 0) break;
+    const pageCanvas = await html2canvas(container, {
+      backgroundColor: '#ffffff',
+      scale,
+      useCORS: true,
+      logging: false,
+      y,
+      height: h,
+      windowWidth: EXPORT_CONTAINER_WIDTH,
+    });
+    // Defensive: html2canvas should respect `height`, but verify the canvas
+    // isn't silently blank (zero-dim) before adding it.
+    if (pageCanvas.width === 0 || pageCanvas.height === 0) {
+      throw new Error(`Page ${i + 1}/${pageCount} captured as empty canvas.`);
+    }
+    canvases.push(pageCanvas);
+  }
+  return { canvases, scale };
+}
+
+/**
+ * Write binary data to a file via raw-body IPC. Sends bytes directly without
+ * base64 encoding — the previous data-URI path inflated payload by 33% and
+ * required JS↔Rust string conversion of arbitrarily large strings.
+ */
+async function writeBinary(path: string, bytes: Uint8Array): Promise<void> {
+  await invoke('write_file_bytes', bytes, { headers: { 'X-File-Path': path } });
 }
 
 /**
  * Export as PNG image
  */
 async function exportAsImage(markdown: string, path: string): Promise<void> {
-  const canvas = await getDocumentCanvas(markdown);
-  const dataUrl = canvas.toDataURL('image/png');
-  await invoke('write_file_binary', { path, base64Data: dataUrl });
+  const container = await getDocumentContainer(markdown);
+  let canvas: HTMLCanvasElement;
+  try {
+    canvas = await captureContainerAsSingleCanvas(container);
+  } finally {
+    container.parentNode?.removeChild(container);
+  }
+
+  // Convert canvas → PNG bytes via Blob (avoids the dataURL base64 hop).
+  const blob: Blob = await new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (b) => (b ? resolve(b) : reject(new Error('Failed to encode PNG'))),
+      'image/png',
+    );
+  });
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  await writeBinary(path, bytes);
 }
 
 /**
  * Export as PDF
  */
 async function exportAsPdf(markdown: string, path: string): Promise<void> {
-  const canvas = await getDocumentCanvas(markdown);
+  const container = await getDocumentContainer(markdown);
+  let pages: { canvases: HTMLCanvasElement[]; scale: number };
+  try {
+    pages = await captureContainerAsPages(container);
+  } finally {
+    container.parentNode?.removeChild(container);
+  }
 
-  const imgWidth = canvas.width;
-  const imgHeight = canvas.height;
-
-  // A4: 210 x 297 mm
-  const pdfWidth = 210;
-  const pdfContentWidth = pdfWidth - 20; // 10mm margins
-  const scale = pdfContentWidth / imgWidth;
-  const pdfContentHeight = imgHeight * scale;
-
-  const pageHeight = 297 - 20; // 10mm margins
-  const totalPages = Math.ceil(pdfContentHeight / pageHeight);
+  if (pages.canvases.length === 0) {
+    throw new Error('No pages were rendered for PDF export.');
+  }
 
   const pdf = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
     format: 'a4',
+    compress: true,
   });
 
-  for (let page = 0; page < totalPages; page++) {
-    if (page > 0) {
-      pdf.addPage();
-    }
+  for (let i = 0; i < pages.canvases.length; i++) {
+    const canvas = pages.canvases[i];
+    if (i > 0) pdf.addPage();
 
-    const sourceY = (page * pageHeight) / scale;
-    const sourceHeight = Math.min(pageHeight / scale, imgHeight - sourceY);
+    // Each page canvas was captured from PAGE_CSS_PX_HEIGHT CSS pixels of
+    // content (except possibly the last, which can be shorter). Translate
+    // its pixel height back to mm so partial pages don't get stretched.
+    const cssPxHeight = canvas.height / pages.scale;
+    const drawHeightMm = (cssPxHeight / PAGE_CSS_PX_HEIGHT) * PDF_CONTENT_HEIGHT_MM;
 
-    const pageCanvas = document.createElement('canvas');
-    pageCanvas.width = imgWidth;
-    pageCanvas.height = sourceHeight;
-    const ctx = pageCanvas.getContext('2d')!;
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, imgWidth, sourceHeight);
-    ctx.drawImage(canvas, 0, sourceY, imgWidth, sourceHeight, 0, 0, imgWidth, sourceHeight);
-
-    const pageDataUrl = pageCanvas.toDataURL('image/png');
-    const drawHeight = sourceHeight * scale;
-    pdf.addImage(pageDataUrl, 'PNG', 10, 10, pdfContentWidth, drawHeight);
+    const dataUrl = canvas.toDataURL('image/png');
+    pdf.addImage(dataUrl, 'PNG', PDF_MARGIN_MM, PDF_MARGIN_MM, PDF_CONTENT_WIDTH_MM, drawHeightMm);
   }
 
-  const pdfBase64 = pdf.output('datauristring');
-  await invoke('write_file_binary', { path, base64Data: pdfBase64 });
+  const buf = pdf.output('arraybuffer') as ArrayBuffer;
+  await writeBinary(path, new Uint8Array(buf));
 }
 
 /**

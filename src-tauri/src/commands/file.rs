@@ -176,6 +176,36 @@ pub fn write_file_binary(path: String, base64_data: String) -> Result<(), String
     file.write_all(&bytes).map_err(sanitize_io_error)
 }
 
+/// Write raw binary bytes to a file via the IPC raw-body path.
+///
+/// Frontend calls `invoke('write_file_bytes', uint8Array, { headers: { 'X-File-Path': path } })`.
+/// The body arrives as `InvokeBody::Raw(Vec<u8>)` with no JSON or base64
+/// transcoding, which is the fast path for large exports (PDF, PNG).
+#[tauri::command]
+pub fn write_file_bytes(request: tauri::ipc::Request<'_>) -> Result<(), String> {
+    use std::io::Write;
+
+    let path = request
+        .headers()
+        .get("X-File-Path")
+        .and_then(|h| h.to_str().ok())
+        .ok_or_else(|| "Missing X-File-Path header".to_string())?
+        .to_string();
+
+    let bytes: &[u8] = match request.body() {
+        tauri::ipc::InvokeBody::Raw(b) => b.as_slice(),
+        _ => return Err("Expected raw bytes body".to_string()),
+    };
+
+    let safe_path = validate_path(&path)?;
+    if let Some(parent) = safe_path.parent() {
+        fs::create_dir_all(parent).map_err(sanitize_io_error)?;
+    }
+
+    let mut file = fs::File::create(&safe_path).map_err(sanitize_io_error)?;
+    file.write_all(bytes).map_err(sanitize_io_error)
+}
+
 /// Simple base64 decoder (no external dependency needed).
 fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
     const TABLE: &[u8; 64] =
