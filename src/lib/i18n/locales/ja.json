@@ -38,7 +38,8 @@
       "knowledgeBase": "ナレッジベース",
       "plugins": "プラグイン",
       "kbSync": "KB 同期",
-      "picora": "Picora"
+      "picora": "Picora",
+      "export": "エクスポート"
     },
     "groups": {
       "general": "一般",
@@ -49,7 +50,8 @@
     },
     "tabDesc": {
       "image": "画像アップロード用のクラウドストレージプロバイダーを設定します。",
-      "publish": "ブログ、GitHub Pages、RSS などの公開先を設定します。"
+      "publish": "ブログ、GitHub Pages、RSS などの公開先を設定します。",
+      "export": "PDF エクスポートを設定 — 用紙サイズ、余白、フォント、コンテンツの切替。"
     },
     "language": {
       "label": "言語",
@@ -226,6 +228,37 @@
         "pro": "Pro",
         "pro_plus": "Pro+"
       }
+    },
+    "export": {
+      "paperSize": "用紙サイズ",
+      "paperA4": "A4",
+      "paperLetter": "Letter",
+      "paperLegal": "Legal",
+      "paperA3": "A3",
+      "paperA5": "A5",
+      "orientation": "向き",
+      "orientationPortrait": "縦向き",
+      "orientationLandscape": "横向き",
+      "margins": "余白 (mm)",
+      "marginsTop": "上",
+      "marginsRight": "右",
+      "marginsBottom": "下",
+      "marginsLeft": "左",
+      "headerFooter": "ヘッダーとフッター",
+      "headerEnabled": "ヘッダーを有効化",
+      "footerEnabled": "フッターを有効化",
+      "templateHint": "プレースホルダ: {title} {page} {total} {date}",
+      "typography": "タイポグラフィ",
+      "fontFamily": "フォント",
+      "fontFamilyPlaceholder": "システム既定",
+      "fontSize": "フォントサイズ",
+      "content": "コンテンツ",
+      "enableHighlight": "コードのシンタックスハイライト",
+      "enableMath": "数式 (KaTeX)",
+      "enableMermaid": "Mermaid 図",
+      "advanced": "詳細設定",
+      "autoFallback": "失敗時に互換モードへ自動フォールバック",
+      "autoFallbackHint": "ネイティブ印刷パスが失敗した場合、canvas ベースのパスで再試行します。無効にするとエラーを表示してユーザーに再試行させます。"
     }
   },
   "titlebar": {
@@ -289,7 +322,11 @@
     "unsavedTitle": "未保存の変更",
     "unsavedNewDocMsg": "未保存の内容があります。先に保存しますか？",
     "saveFirst": "保存",
-    "discardChanges": "保存しない"
+    "discardChanges": "保存しない",
+    "loading": {
+      "parsing": "Markdown を解析中…",
+      "rendering": "レンダリング中…"
+    }
   },
   "table": {
     "insertRowAbove": "上に行を挿入",
@@ -854,7 +891,23 @@
     "mediawiki": "MediaWiki",
     "rst": "reStructuredText",
     "textile": "Textile",
-    "opml": "OPML"
+    "opml": "OPML",
+    "progress": {
+      "preparing": "準備中…",
+      "rendering": "レンダリング中…",
+      "paginating": "ページ分割中（{current}/{total}）",
+      "writing": "書き込み中…",
+      "done": "完了"
+    },
+    "fallback": {
+      "notice": "互換モード"
+    },
+    "error": {
+      "generic": "エクスポート失敗",
+      "timeout": "エクスポートのタイムアウト",
+      "subprocessFailed": "サブプロセスが失敗",
+      "nativeApiFailed": "ネイティブ印刷が失敗"
+    }
   },
   "workflow": {
     "title": "AI ワークフロー",

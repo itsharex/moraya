@@ -38,7 +38,8 @@
       "knowledgeBase": "Knowledge Base",
       "kbSync": "KB Sync",
       "plugins": "Plugins",
-      "picora": "Picora"
+      "picora": "Picora",
+      "export": "Export"
     },
     "groups": {
       "general": "General",
@@ -84,7 +85,8 @@
     },
     "tabDesc": {
       "image": "Configure cloud storage providers for image uploads.",
-      "publish": "Configure publishing destinations for your documents. Push Markdown files to GitHub Pages, generate RSS feeds, or post to custom API endpoints."
+      "publish": "Configure publishing destinations for your documents. Push Markdown files to GitHub Pages, generate RSS feeds, or post to custom API endpoints.",
+      "export": "Configure PDF export — page size, margins, fonts, and content toggles."
     },
     "version": "Moraya v{version}",
     "permissions": {
@@ -226,6 +228,37 @@
         "pro": "Pro",
         "pro_plus": "Pro+"
       }
+    },
+    "export": {
+      "paperSize": "Paper size",
+      "paperA4": "A4",
+      "paperLetter": "Letter",
+      "paperLegal": "Legal",
+      "paperA3": "A3",
+      "paperA5": "A5",
+      "orientation": "Orientation",
+      "orientationPortrait": "Portrait",
+      "orientationLandscape": "Landscape",
+      "margins": "Margins (mm)",
+      "marginsTop": "Top",
+      "marginsRight": "Right",
+      "marginsBottom": "Bottom",
+      "marginsLeft": "Left",
+      "headerFooter": "Header & Footer",
+      "headerEnabled": "Enable header",
+      "footerEnabled": "Enable footer",
+      "templateHint": "Placeholders: {title} {page} {total} {date}",
+      "typography": "Typography",
+      "fontFamily": "Font family",
+      "fontFamilyPlaceholder": "System default",
+      "fontSize": "Font size",
+      "content": "Content",
+      "enableHighlight": "Code syntax highlighting",
+      "enableMath": "Math (KaTeX)",
+      "enableMermaid": "Mermaid diagrams",
+      "advanced": "Advanced",
+      "autoFallback": "Auto-fall back to compat mode on failure",
+      "autoFallbackHint": "When the native print path fails, retry with the canvas-based path. Disable to surface errors and let the user retry manually."
     }
   },
   "titlebar": {
@@ -289,7 +322,11 @@
     "unsavedTitle": "Unsaved Changes",
     "unsavedNewDocMsg": "You have unsaved content that will be lost. Save it first?",
     "saveFirst": "Save",
-    "discardChanges": "Don't Save"
+    "discardChanges": "Don't Save",
+    "loading": {
+      "parsing": "Parsing markdown…",
+      "rendering": "Rendering…"
+    }
   },
   "table": {
     "insertRowAbove": "Insert Row Above",
@@ -906,7 +943,23 @@
     "mediawiki": "MediaWiki",
     "rst": "reStructuredText",
     "textile": "Textile",
-    "opml": "OPML"
+    "opml": "OPML",
+    "progress": {
+      "preparing": "Preparing...",
+      "rendering": "Rendering...",
+      "paginating": "Paginating ({current}/{total})",
+      "writing": "Writing...",
+      "done": "Done"
+    },
+    "fallback": {
+      "notice": "Compat mode"
+    },
+    "error": {
+      "generic": "Export failed",
+      "timeout": "Export timed out",
+      "subprocessFailed": "Subprocess failed",
+      "nativeApiFailed": "Native print failed"
+    }
   },
   "workflow": {
     "title": "AI Workflow",

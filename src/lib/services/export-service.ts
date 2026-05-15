@@ -5,6 +5,13 @@ import { t } from '$lib/i18n';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import katex from 'katex';
+import { settingsStore } from '$lib/stores/settings-store';
+import { exportProgressStore } from '$lib/stores/export-progress-store';
+import {
+  exportPdfNative,
+  defaultExportOptions,
+  type PdfExportOptions,
+} from './pdf-export-native';
 
 export type ExportFormat =
   | 'pdf'
@@ -516,9 +523,16 @@ async function exportAsImage(markdown: string, path: string): Promise<void> {
 }
 
 /**
- * Export as PDF
+ * Export as PDF using the canvas-based pipeline.
+ *
+ * Used as a fallback when the native print-to-PDF path fails (or as the
+ * primary path on platforms where the native path isn't available yet).
+ *
+ * Emits `paginating` progress events so the StatusBar can show realtime
+ * page progress for long documents.
  */
-async function exportAsPdf(markdown: string, path: string): Promise<void> {
+async function exportAsCanvasPdf(markdown: string, path: string): Promise<void> {
+  exportProgressStore.setPhase('rendering');
   const container = await getDocumentContainer(markdown);
   let pages: { canvases: HTMLCanvasElement[]; scale: number };
   try {
@@ -538,9 +552,12 @@ async function exportAsPdf(markdown: string, path: string): Promise<void> {
     compress: true,
   });
 
-  for (let i = 0; i < pages.canvases.length; i++) {
+  const totalPages = pages.canvases.length;
+  for (let i = 0; i < totalPages; i++) {
     const canvas = pages.canvases[i];
     if (i > 0) pdf.addPage();
+
+    exportProgressStore.setPaginating(i + 1, totalPages);
 
     // Each page canvas was captured from PAGE_CSS_PX_HEIGHT CSS pixels of
     // content (except possibly the last, which can be shorter). Translate
@@ -552,19 +569,110 @@ async function exportAsPdf(markdown: string, path: string): Promise<void> {
     pdf.addImage(dataUrl, 'PNG', PDF_MARGIN_MM, PDF_MARGIN_MM, PDF_CONTENT_WIDTH_MM, drawHeightMm);
   }
 
+  exportProgressStore.setPhase('writing');
   const buf = pdf.output('arraybuffer') as ArrayBuffer;
   await writeBinary(path, new Uint8Array(buf));
 }
 
 /**
- * Export markdown content to the specified format
+ * Build a PdfExportOptions value from the user's settings + the document title.
  */
-export async function exportDocument(markdown: string, format: ExportFormat): Promise<boolean> {
+function buildNativeOptions(documentTitle: string): PdfExportOptions {
+  const opts = defaultExportOptions(documentTitle);
+  const settings = get(settingsStore);
+  const e = settings.exportSettings;
+  if (!e) return opts;
+  return {
+    paper_size: e.pageSize,
+    orientation: e.orientation,
+    margins: { ...e.margins },
+    header_enabled: e.headerEnabled,
+    header_template: e.headerTemplate,
+    footer_enabled: e.footerEnabled,
+    footer_template: e.footerTemplate,
+    font_size: e.fontSize,
+    font_family: e.fontFamily,
+    enable_highlight: e.enableHighlight,
+    enable_mermaid: e.enableMermaid,
+    enable_math: e.enableMath,
+    document_title: documentTitle,
+  };
+}
+
+/**
+ * Top-level PDF export. Tries the native print-to-PDF path first (selectable
+ * text, vector fonts, real CSS pagination); falls back to the canvas path on
+ * any failure if `autoFallbackOnFailure` is enabled in settings.
+ */
+async function exportAsPdf(markdown: string, path: string): Promise<void> {
+  exportProgressStore.start();
+  const settings = get(settingsStore);
+  const documentTitle = inferDocumentTitle(markdown);
+  const opts = buildNativeOptions(documentTitle);
+  const autoFallback = settings.exportSettings?.autoFallbackOnFailure ?? true;
+
+  try {
+    await exportPdfNative(markdown, path, opts, (update) => {
+      if (update.phase) exportProgressStore.setPhase(update.phase);
+      if (update.phase === 'paginating' && update.current != null && update.total != null) {
+        exportProgressStore.setPaginating(update.current, update.total);
+      }
+    });
+    exportProgressStore.done();
+  } catch (nativeErr) {
+    if (!autoFallback) {
+      exportProgressStore.error(
+        nativeErr instanceof Error ? nativeErr.message : String(nativeErr),
+      );
+      throw nativeErr;
+    }
+    // Native failed — switch to canvas path and mark as fallback.
+    exportProgressStore.fallback();
+    try {
+      await exportAsCanvasPdf(markdown, path);
+      exportProgressStore.done();
+    } catch (canvasErr) {
+      exportProgressStore.error(
+        canvasErr instanceof Error ? canvasErr.message : String(canvasErr),
+      );
+      throw canvasErr;
+    }
+  }
+}
+
+/** Extract document title from the first H1, falling back to first non-blank line. */
+function inferDocumentTitle(markdown: string): string {
+  for (const raw of markdown.split('\n')) {
+    const line = raw.trim();
+    if (!line) continue;
+    const h1 = line.match(/^#\s+(.+)$/);
+    if (h1) return h1[1].trim();
+    if (!line.startsWith('#')) return line.slice(0, 80);
+  }
+  return 'Document';
+}
+
+/**
+ * Export markdown content to the specified format.
+ *
+ * Accepts either a markdown string OR a lazy getter. For huge documents,
+ * markdown serialization (ProseMirror → text) can take seconds-to-minutes;
+ * passing a getter lets us show the save dialog FIRST and only pay that
+ * cost after the user has actually committed to exporting.
+ */
+export async function exportDocument(
+  markdownOrGetter: string | (() => string),
+  format: ExportFormat,
+): Promise<boolean> {
   const option = exportOptions.find(o => o.format === format);
   if (!option) return false;
 
   const tr = get(t);
   const label = tr(option.labelKey);
+  // Show the save dialog FIRST. It only depends on the format, not the
+  // content — so it can appear instantly even while the editor is still
+  // busy. Resolving the markdown beforehand would block the JS main thread
+  // and delay the dialog by however long serialization takes.
   const path = await saveDialog({
     title: tr('export.exportAs', { format: label }),
     defaultPath: `document.${option.extension}`,
@@ -572,6 +680,20 @@ export async function exportDocument(markdown: string, format: ExportFormat): Pr
   });
 
   if (!path || typeof path !== 'string') return false;
+
+  // User committed — show "preparing" in the StatusBar BEFORE the blocking
+  // markdown serialization. For huge documents `getCurrentContent()` can
+  // freeze the JS main thread for tens of seconds; without this yield the
+  // user sees a totally unresponsive UI between picking a path and the
+  // first real progress event.
+  if (format === 'pdf') {
+    exportProgressStore.start();
+    // Yield one frame so Svelte renders the status pill before we block.
+    await new Promise((r) => setTimeout(r, 0));
+  }
+
+  const markdown =
+    typeof markdownOrGetter === 'function' ? markdownOrGetter() : markdownOrGetter;
 
   switch (format) {
     case 'html':

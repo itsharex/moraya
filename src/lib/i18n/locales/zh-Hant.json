@@ -38,7 +38,8 @@
       "knowledgeBase": "知識庫",
       "plugins": "外掛",
       "kbSync": "KB 同步",
-      "picora": "Picora"
+      "picora": "Picora",
+      "export": "匯出"
     },
     "groups": {
       "general": "通用",
@@ -84,7 +85,8 @@
     },
     "tabDesc": {
       "image": "設定圖床雲端儲存服務。",
-      "publish": "設定文章發布目標，將 Markdown 文件一鍵發布到 GitHub Pages、生成 RSS 訂閱源或推送至自訂 API。"
+      "publish": "設定文章發布目標，將 Markdown 文件一鍵發布到 GitHub Pages、生成 RSS 訂閱源或推送至自訂 API。",
+      "export": "設定 PDF 匯出 — 紙張大小、頁邊距、字型與內容開關。"
     },
     "version": "Moraya v{version}",
     "permissions": {
@@ -226,6 +228,37 @@
         "pro": "Pro",
         "pro_plus": "Pro+"
       }
+    },
+    "export": {
+      "paperSize": "紙張大小",
+      "paperA4": "A4",
+      "paperLetter": "Letter",
+      "paperLegal": "Legal",
+      "paperA3": "A3",
+      "paperA5": "A5",
+      "orientation": "方向",
+      "orientationPortrait": "縱向",
+      "orientationLandscape": "橫向",
+      "margins": "頁邊距 (mm)",
+      "marginsTop": "上",
+      "marginsRight": "右",
+      "marginsBottom": "下",
+      "marginsLeft": "左",
+      "headerFooter": "頁首與頁尾",
+      "headerEnabled": "啟用頁首",
+      "footerEnabled": "啟用頁尾",
+      "templateHint": "佔位符：{title} {page} {total} {date}",
+      "typography": "排版",
+      "fontFamily": "字型",
+      "fontFamilyPlaceholder": "系統預設",
+      "fontSize": "字級",
+      "content": "內容",
+      "enableHighlight": "程式碼語法高亮",
+      "enableMath": "數學公式 (KaTeX)",
+      "enableMermaid": "Mermaid 圖表",
+      "advanced": "進階",
+      "autoFallback": "失敗時自動回退到相容模式",
+      "autoFallbackHint": "原生列印路徑失敗時，自動以 canvas 路徑重試。關閉後失敗將彈錯讓使用者手動重試。"
     }
   },
   "titlebar": {
@@ -289,7 +322,11 @@
     "unsavedTitle": "未儲存的變更",
     "unsavedNewDocMsg": "目前文件有未儲存的內容，切換後將遺失。是否先儲存？",
     "saveFirst": "儲存",
-    "discardChanges": "不儲存"
+    "discardChanges": "不儲存",
+    "loading": {
+      "parsing": "解析 Markdown…",
+      "rendering": "渲染中…"
+    }
   },
   "table": {
     "insertRowAbove": "在上方插入列",
@@ -854,7 +891,23 @@
     "mediawiki": "MediaWiki",
     "rst": "reStructuredText",
     "textile": "Textile",
-    "opml": "OPML"
+    "opml": "OPML",
+    "progress": {
+      "preparing": "準備中…",
+      "rendering": "正在算繪…",
+      "paginating": "正在分頁（{current}/{total}）",
+      "writing": "正在寫入…",
+      "done": "已完成"
+    },
+    "fallback": {
+      "notice": "相容模式"
+    },
+    "error": {
+      "generic": "匯出失敗",
+      "timeout": "匯出逾時",
+      "subprocessFailed": "子處理程序失敗",
+      "nativeApiFailed": "原生列印失敗"
+    }
   },
   "workflow": {
     "title": "AI工作流",

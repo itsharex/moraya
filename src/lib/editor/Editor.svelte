@@ -2,7 +2,7 @@
   import { onMount, onDestroy, tick } from 'svelte';
   import type { MorayaEditor } from './setup';
   import { EditorState, TextSelection, AllSelection } from 'prosemirror-state';
-  import { Slice } from 'prosemirror-model';
+  import { Slice, DOMParser as PMDOMParser } from 'prosemirror-model';
   import { Decoration, DecorationSet } from 'prosemirror-view';
   import {
     addRowBefore,
@@ -21,6 +21,7 @@
   import { docCache } from './doc-cache';
   import { editorStore } from '../stores/editor-store';
   import { settingsStore } from '../stores/settings-store';
+  import { editorLoadingStore } from '../stores/editor-loading-store';
   import { readImageAsBlobUrl } from '../services/file-service';
   import { uploadImage, fetchImageAsBlob, targetToConfig } from '../services/image-hosting';
   import { aiStore } from '../services/ai';
@@ -819,13 +820,312 @@
   /** Handle paste event for clipboard images.
    *  Must be registered on the capture phase so it runs BEFORE ProseMirror's
    *  default paste handler, which would otherwise insert base64 <img> from HTML. */
+  /**
+   * True when the current selection is inside a table cell. Used to disable
+   * table-paste interception there: dropping a fresh `<table>` node into a
+   * cell would split / fragment the host table.
+   */
+  function isCursorInTableCell(): boolean {
+    if (!editor) return false;
+    const sel = editor.view.state.selection;
+    const from = sel.$from;
+    for (let d = from.depth; d > 0; d--) {
+      const role = from.node(d).type.spec.tableRole;
+      if (role === 'cell' || role === 'header_cell') return true;
+    }
+    return false;
+  }
+
+  /**
+   * Detect tab-separated plain text (common output from DB GUI tools when
+   * copying a result grid: DBeaver, TablePlus, Navicat, etc.). Requires at
+   * least two lines and each non-empty line to contain a tab.
+   */
+  function looksLikeTSV(text: string): boolean {
+    const lines = text.split(/\r?\n/).filter((l) => l.length > 0);
+    if (lines.length < 2) return false;
+    return lines.every((l) => l.includes('\t'));
+  }
+
+  /**
+   * Build a normalized HTML `<table>` from a parsed source table.
+   *
+   * The schema requires `table: content "table_header_row table_row+"`, but
+   * Excel and similar tools usually emit `<table><tr><td>…</td></tr>…</table>`
+   * with no `<th>` anywhere. We promote the first row's cells to `<th>` so
+   * ProseMirror's DOM parser places it into `table_header_row` and the
+   * remaining `<td>` rows fill `table_row+`.
+   */
+  function normalizeTableHtml(table: HTMLTableElement): HTMLTableElement {
+    const rows = Array.from(table.querySelectorAll('tr'));
+    if (rows.length === 0) return table;
+    const firstRow = rows[0];
+    // If the first row already has a th, trust the source.
+    if (firstRow.querySelector('th')) return table;
+    for (const td of Array.from(firstRow.querySelectorAll('td'))) {
+      const th = document.createElement('th');
+      // Copy basic attributes that matter for layout / alignment.
+      for (const attr of ['colspan', 'rowspan', 'style', 'align']) {
+        const v = td.getAttribute(attr);
+        if (v) th.setAttribute(attr, v);
+      }
+      th.innerHTML = td.innerHTML;
+      td.replaceWith(th);
+    }
+    return table;
+  }
+
+  /** Build an HTML `<table>` string from tab-separated rows. */
+  function tsvToTableHtml(tsv: string): string {
+    const escape = (s: string): string =>
+      s.replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    const rows = tsv
+      .split(/\r?\n/)
+      .filter((l) => l.length > 0)
+      .map((l) => l.split('\t'));
+    if (rows.length === 0) return '';
+    const [header, ...body] = rows;
+    const thead =
+      '<tr>' + header.map((c) => `<th>${escape(c)}</th>`).join('') + '</tr>';
+    const tbody = body
+      .map(
+        (r) =>
+          '<tr>' + r.map((c) => `<td>${escape(c)}</td>`).join('') + '</tr>',
+      )
+      .join('');
+    return `<table>${thead}${tbody}</table>`;
+  }
+
+  /**
+   * Extract pasted clipboard content as a 2D array of cell strings.
+   * Recognizes:
+   *   - HTML with `<tr>` rows (e.g. selected cells from a ProseMirror /
+   *     Excel / web table)
+   *   - Bare `<td>` / `<th>` cells (single row, no wrapping `<tr>`)
+   *   - TSV plain text
+   * Returns `[]` when no table-like structure is found.
+   */
+  function parseClipboardCells(
+    html: string | null,
+    plain: string | null,
+  ): string[][] {
+    if (html) {
+      try {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        const trs = Array.from(doc.querySelectorAll('tr'));
+        if (trs.length > 0) {
+          return trs
+            .map((tr) =>
+              Array.from(tr.querySelectorAll('td, th')).map(
+                (c) => (c.textContent || '').trim(),
+              ),
+            )
+            .filter((row) => row.length > 0);
+        }
+        // No <tr>, but maybe bare cells were copied (rare, but possible).
+        const cells = Array.from(doc.querySelectorAll('td, th'));
+        if (cells.length > 0) {
+          return [cells.map((c) => (c.textContent || '').trim())];
+        }
+      } catch {
+        /* fall through */
+      }
+    }
+    if (plain && looksLikeTSV(plain)) {
+      return plain
+        .split(/\r?\n/)
+        .filter((l) => l.length > 0)
+        .map((l) => l.split('\t').map((c) => c.trim()));
+    }
+    return [];
+  }
+
+  /**
+   * Distribute pasted cells across the host table starting at the cursor —
+   * Excel/Numbers-style. The cursor's cell is the top-left of the paste
+   * target; extra rows/cols that fall outside the host table are dropped
+   * (rather than spilling into nowhere as ProseMirror's default does).
+   *
+   * Returns true if at least one cell was written.
+   */
+  function pasteCellsAtCursor(cells: string[][]): boolean {
+    if (!editor || cells.length === 0) return false;
+    const view = editor.view;
+    const from = view.state.selection.$from;
+
+    // Locate cell / row / table on the ancestor chain.
+    let cellDepth = -1;
+    for (let d = from.depth; d > 0; d--) {
+      const role = from.node(d).type.spec.tableRole;
+      if (role === 'cell' || role === 'header_cell') {
+        cellDepth = d;
+        break;
+      }
+    }
+    if (cellDepth < 1) return false;
+    const tableDepth = cellDepth - 2;
+    if (tableDepth < 0) return false;
+
+    const tableNode = from.node(tableDepth);
+    const tablePos = from.before(tableDepth);
+    const startRowIdx = from.index(tableDepth);
+    const startCellIdx = from.index(cellDepth - 1);
+
+    let tr = view.state.tr;
+    let rowPos = tablePos + 1; // inside table, before first row
+    for (let i = 0; i < startRowIdx; i++) {
+      rowPos += tableNode.child(i).nodeSize;
+    }
+
+    let wrote = false;
+    for (let rOff = 0; rOff < cells.length; rOff++) {
+      const targetRowIdx = startRowIdx + rOff;
+      if (targetRowIdx >= tableNode.childCount) break;
+      const rowNode = tableNode.child(targetRowIdx);
+
+      // For the first pasted row, start at the cursor's column; for
+      // subsequent rows, start at the same column (Excel-style).
+      let cellPos = rowPos + 1; // inside row, before first cell
+      for (let i = 0; i < startCellIdx; i++) {
+        cellPos += rowNode.child(i).nodeSize;
+      }
+
+      const pastedRow = cells[rOff];
+      for (let cOff = 0; cOff < pastedRow.length; cOff++) {
+        const targetCellIdx = startCellIdx + cOff;
+        if (targetCellIdx >= rowNode.childCount) break;
+        const cellNode = rowNode.child(targetCellIdx);
+        const text = pastedRow[cOff];
+
+        // Replace just the cell's content (keep its attrs / type).
+        const innerStart = cellPos + 1;
+        const innerEnd = cellPos + cellNode.nodeSize - 1;
+        const mappedStart = tr.mapping.map(innerStart);
+        const mappedEnd = tr.mapping.map(innerEnd, -1);
+
+        const para = schema.nodes.paragraph.create(
+          null,
+          text ? schema.text(text) : null,
+        );
+        tr = tr.replaceWith(mappedStart, mappedEnd, para);
+        wrote = true;
+
+        cellPos += cellNode.nodeSize;
+      }
+
+      rowPos += rowNode.nodeSize;
+    }
+
+    if (!wrote) return false;
+    view.dispatch(tr);
+    return true;
+  }
+
+  /**
+   * Parse an HTML `<table>` element into a ProseMirror node and insert it at
+   * the current selection. Returns true on success.
+   */
+  function insertTableFromElement(table: HTMLTableElement): boolean {
+    if (!editor) return false;
+    try {
+      normalizeTableHtml(table);
+      // Wrap so DOMParser sees a block-level container.
+      const wrap = document.createElement('div');
+      wrap.appendChild(table);
+      const pmDoc = PMDOMParser.fromSchema(schema).parse(wrap);
+      if (pmDoc.content.size === 0) return false;
+      const view = editor.view;
+      const tr = view.state.tr.replaceSelectionWith(
+        pmDoc.firstChild ?? pmDoc,
+        false,
+      );
+      view.dispatch(tr);
+      return true;
+    } catch (e) {
+      console.warn('[Paste] table insert failed:', e);
+      return false;
+    }
+  }
+
   function handlePaste(event: ClipboardEvent) {
     if (!event.clipboardData) return;
 
-    // Check if clipboard contains an image file (blob).
-    // This takes priority over HTML content — browsers copying images from web pages
-    // include both text/html (with <img src="data:...">) and image/png (blob).
-    // We only want one image: the locally saved file, not the base64 from HTML.
+    const html = event.clipboardData.getData('text/html');
+    const plain = event.clipboardData.getData('text/plain');
+
+    // When the cursor is already inside a table cell, never insert a new
+    // table on top. ProseMirror's own default handler ALSO mishandles this
+    // case — pasting `<td>` cells into another cell leaves spillover cells
+    // that escape the host table's column count. So when inside a cell,
+    // we strip any table/cell structure from the clipboard and insert
+    // only the inline text into the current cell.
+    const insideCell = isCursorInTableCell();
+
+    if (insideCell && editor) {
+      const cells = parseClipboardCells(html, plain);
+      // Multi-cell paste: distribute cells across the host table starting
+      // at the cursor (Excel-style). A 1×1 paste falls through to default
+      // text behavior so single-cell text edits aren't affected.
+      const isMultiCell =
+        cells.length > 1 || (cells.length === 1 && cells[0].length > 1);
+      if (isMultiCell) {
+        if (pasteCellsAtCursor(cells)) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          return;
+        }
+        // Distribution failed (e.g. position math edge case) — fall back
+        // to joining everything as plain text in the current cell rather
+        // than letting ProseMirror's default produce spillover cells.
+        const text = cells.flat().filter(Boolean).join(' ');
+        if (text) {
+          const view = editor.view;
+          view.dispatch(view.state.tr.insertText(text));
+        }
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        return;
+      }
+    }
+
+    // 1. Pasted HTML with a <table> (Excel, web pages, DB tools that emit
+    //    HTML). Excel additionally puts a screenshot on the clipboard — the
+    //    old code preferred the image, which masked the actual table. We
+    //    intercept here so the table wins.
+    if (!insideCell && html && /<table[\s>]/i.test(html)) {
+      try {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        const table = doc.querySelector('table');
+        if (table && insertTableFromElement(table as HTMLTableElement)) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          return;
+        }
+      } catch (e) {
+        console.warn('[Paste] HTML table parse failed; falling through:', e);
+      }
+    }
+
+    // 2. Plain-text TSV (DB GUI tools that copy result grids as TSV without
+    //    HTML). Convert to <table> first, then reuse the same path.
+    if (!insideCell && !html && plain && looksLikeTSV(plain)) {
+      const tableHtml = tsvToTableHtml(plain);
+      try {
+        const doc = new DOMParser().parseFromString(tableHtml, 'text/html');
+        const table = doc.querySelector('table');
+        if (table && insertTableFromElement(table as HTMLTableElement)) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          return;
+        }
+      } catch (e) {
+        console.warn('[Paste] TSV → table conversion failed; falling through:', e);
+      }
+    }
+
+    // 3. Otherwise, check for an image blob and fall back to image handling.
     let imageFile: File | null = null;
     const items = event.clipboardData.items;
     for (let i = 0; i < items.length; i++) {
@@ -2370,6 +2670,11 @@
       return;
     }
 
+    // For non-trivial files, surface a "loading…" pill in the StatusBar.
+    // The threshold matches the async-parse threshold below; smaller files
+    // complete fast enough that an indicator would just flash.
+    const showLoading = editorLoadingStore.startIfLarge(visualContent.length);
+
     // Small file: synchronous parse + apply
     if (visualContent.length < 50_000) {
       try {
@@ -2379,6 +2684,7 @@
         applySyncDoc(doc);
         externalSyncDone = true; // Tell $effect to skip redundant applySyncToEditor
       } catch (err) { console.error('[Editor] syncContent applySyncDoc failed:', err); }
+      finally { if (showLoading) editorLoadingStore.finish(); }
       return;
     }
 
@@ -2386,14 +2692,29 @@
     // externalSyncDone is NOT set synchronously here — the $effect's 150ms timer
     // acts as a fallback while parsing is in progress.
     parseMarkdownAsync(visualContent).then(doc => {
-      if (myGen !== syncGeneration) return; // Superseded by a newer switch
-      if (!editor || !isReady) return;
-      if (!doc) return;
+      if (myGen !== syncGeneration) {
+        if (showLoading) editorLoadingStore.finish();
+        return; // Superseded by a newer switch
+      }
+      if (!editor || !isReady) {
+        if (showLoading) editorLoadingStore.finish();
+        return;
+      }
+      if (!doc) {
+        if (showLoading) editorLoadingStore.finish();
+        return;
+      }
       try {
+        if (showLoading) editorLoadingStore.setPhase('rendering');
         if (filePath) docCache.set(filePath, visualContent, doc);
         applySyncDoc(doc);
         externalSyncDone = true; // Prevent $effect timer from re-applying on next content change
       } catch (err) { console.error('[Editor] syncContent applySyncDoc (async) failed:', err); }
+      finally {
+        // Defer one frame so the rendered DOM is on screen before the
+        // pill disappears — otherwise it can vanish before paint.
+        if (showLoading) requestAnimationFrame(() => editorLoadingStore.finish());
+      }
     });
   }
 

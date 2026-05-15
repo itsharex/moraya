@@ -38,7 +38,8 @@
       "knowledgeBase": "Base de conhecimento",
       "plugins": "Plugins",
       "kbSync": "Sync KB",
-      "picora": "Picora"
+      "picora": "Picora",
+      "export": "Exportar"
     },
     "groups": {
       "general": "Geral",
@@ -49,7 +50,8 @@
     },
     "tabDesc": {
       "image": "Configure provedores de armazenamento em nuvem para envio de imagens.",
-      "publish": "Configure destinos de publicação como blog, GitHub Pages ou RSS."
+      "publish": "Configure destinos de publicação como blog, GitHub Pages ou RSS.",
+      "export": "Configurar exportação de PDF — tamanho da página, margens, fontes e opções de conteúdo."
     },
     "language": {
       "label": "Idioma",
@@ -226,6 +228,37 @@
         "pro": "Pro",
         "pro_plus": "Pro+"
       }
+    },
+    "export": {
+      "paperSize": "Tamanho do papel",
+      "paperA4": "A4",
+      "paperLetter": "Letter",
+      "paperLegal": "Legal",
+      "paperA3": "A3",
+      "paperA5": "A5",
+      "orientation": "Orientação",
+      "orientationPortrait": "Retrato",
+      "orientationLandscape": "Paisagem",
+      "margins": "Margens (mm)",
+      "marginsTop": "Superior",
+      "marginsRight": "Direita",
+      "marginsBottom": "Inferior",
+      "marginsLeft": "Esquerda",
+      "headerFooter": "Cabeçalho e rodapé",
+      "headerEnabled": "Ativar cabeçalho",
+      "footerEnabled": "Ativar rodapé",
+      "templateHint": "Marcadores: {title} {page} {total} {date}",
+      "typography": "Tipografia",
+      "fontFamily": "Fonte",
+      "fontFamilyPlaceholder": "Padrão do sistema",
+      "fontSize": "Tamanho da fonte",
+      "content": "Conteúdo",
+      "enableHighlight": "Realce de sintaxe",
+      "enableMath": "Matemática (KaTeX)",
+      "enableMermaid": "Diagramas Mermaid",
+      "advanced": "Avançado",
+      "autoFallback": "Recuar automaticamente para o modo de compatibilidade em caso de falha",
+      "autoFallbackHint": "Quando o caminho de impressão nativo falhar, repetir com o caminho baseado em canvas. Desative para mostrar os erros e deixar o usuário tentar novamente manualmente."
     }
   },
   "titlebar": {
@@ -289,7 +322,11 @@
     "unsavedTitle": "Alterações não salvas",
     "unsavedNewDocMsg": "Você tem conteúdo não salvo que será perdido. Deseja salvar primeiro?",
     "saveFirst": "Salvar",
-    "discardChanges": "Não salvar"
+    "discardChanges": "Não salvar",
+    "loading": {
+      "parsing": "Analisando markdown…",
+      "rendering": "Renderizando…"
+    }
   },
   "table": {
     "insertRowAbove": "Inserir linha acima",
@@ -854,7 +891,23 @@
     "mediawiki": "MediaWiki",
     "rst": "reStructuredText",
     "textile": "Textile",
-    "opml": "OPML"
+    "opml": "OPML",
+    "progress": {
+      "preparing": "Preparando...",
+      "rendering": "Renderizando...",
+      "paginating": "Paginando ({current}/{total})",
+      "writing": "Gravando...",
+      "done": "Concluído"
+    },
+    "fallback": {
+      "notice": "Modo compat."
+    },
+    "error": {
+      "generic": "Falha na exportação",
+      "timeout": "Tempo de exportação esgotado",
+      "subprocessFailed": "Subprocesso falhou",
+      "nativeApiFailed": "Impressão nativa falhou"
+    }
   },
   "workflow": {
     "title": "Fluxo de trabalho IA",

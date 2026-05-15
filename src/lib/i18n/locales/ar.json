@@ -38,7 +38,8 @@
       "knowledgeBase": "قاعدة المعرفة",
       "plugins": "الإضافات",
       "kbSync": "KB Sync",
-      "picora": "Picora"
+      "picora": "Picora",
+      "export": "تصدير"
     },
     "groups": {
       "general": "عام",
@@ -84,7 +85,8 @@
     },
     "tabDesc": {
       "image": "تكوين موفري التخزين السحابي لرفع الصور.",
-      "publish": "قم بتكوين وجهات النشر لمستنداتك. انشر ملفات Markdown على GitHub Pages أو أنشئ خلاصات RSS أو أرسل إلى نقاط نهاية API مخصصة."
+      "publish": "قم بتكوين وجهات النشر لمستنداتك. انشر ملفات Markdown على GitHub Pages أو أنشئ خلاصات RSS أو أرسل إلى نقاط نهاية API مخصصة.",
+      "export": "تكوين تصدير PDF — حجم الصفحة والهوامش والخطوط ومفاتيح المحتوى."
     },
     "version": "Moraya v{version}",
     "permissions": {
@@ -226,6 +228,37 @@
         "pro": "Pro",
         "pro_plus": "Pro+"
       }
+    },
+    "export": {
+      "paperSize": "حجم الورق",
+      "paperA4": "A4",
+      "paperLetter": "Letter",
+      "paperLegal": "Legal",
+      "paperA3": "A3",
+      "paperA5": "A5",
+      "orientation": "الاتجاه",
+      "orientationPortrait": "عمودي",
+      "orientationLandscape": "أفقي",
+      "margins": "الهوامش (مم)",
+      "marginsTop": "أعلى",
+      "marginsRight": "يمين",
+      "marginsBottom": "أسفل",
+      "marginsLeft": "يسار",
+      "headerFooter": "الرأس والتذييل",
+      "headerEnabled": "تفعيل الرأس",
+      "footerEnabled": "تفعيل التذييل",
+      "templateHint": "العناصر النائبة: {title} {page} {total} {date}",
+      "typography": "الطباعة",
+      "fontFamily": "الخط",
+      "fontFamilyPlaceholder": "الافتراضي",
+      "fontSize": "حجم الخط",
+      "content": "المحتوى",
+      "enableHighlight": "تلوين الكود",
+      "enableMath": "الرياضيات (KaTeX)",
+      "enableMermaid": "مخططات Mermaid",
+      "advanced": "متقدم",
+      "autoFallback": "العودة تلقائيًا إلى وضع التوافق عند الفشل",
+      "autoFallbackHint": "عند فشل مسار الطباعة الأصلي، أعد المحاولة باستخدام مسار canvas. عطّل لإظهار الأخطاء وترك المستخدم يعيد المحاولة يدويًا."
     }
   },
   "titlebar": {
@@ -289,7 +322,11 @@
     "unsavedTitle": "تغييرات غير محفوظة",
     "unsavedNewDocMsg": "لديك محتوى غير محفوظ سيتم فقدانه. هل تريد حفظه أولاً؟",
     "saveFirst": "حفظ",
-    "discardChanges": "عدم الحفظ"
+    "discardChanges": "عدم الحفظ",
+    "loading": {
+      "parsing": "تحليل Markdown…",
+      "rendering": "جارٍ التصيير…"
+    }
   },
   "table": {
     "insertRowAbove": "إدراج صف أعلاه",
@@ -854,7 +891,23 @@
     "mediawiki": "MediaWiki",
     "rst": "reStructuredText",
     "textile": "Textile",
-    "opml": "OPML"
+    "opml": "OPML",
+    "progress": {
+      "preparing": "التحضير...",
+      "rendering": "العرض...",
+      "paginating": "تقسيم الصفحات ({current}/{total})",
+      "writing": "الكتابة...",
+      "done": "تم"
+    },
+    "fallback": {
+      "notice": "وضع التوافق"
+    },
+    "error": {
+      "generic": "فشل التصدير",
+      "timeout": "انتهت مهلة التصدير",
+      "subprocessFailed": "فشلت العملية الفرعية",
+      "nativeApiFailed": "فشلت الطباعة الأصلية"
+    }
   },
   "workflow": {
     "title": "سير عمل AI",

@@ -38,7 +38,8 @@
       "knowledgeBase": "Wissensdatenbank",
       "plugins": "Plugins",
       "kbSync": "KB-Sync",
-      "picora": "Picora"
+      "picora": "Picora",
+      "export": "Exportieren"
     },
     "groups": {
       "general": "Allgemein",
@@ -84,7 +85,8 @@
     },
     "tabDesc": {
       "image": "Cloud-Speicheranbieter für Bild-Uploads konfigurieren.",
-      "publish": "Konfigurieren Sie Veröffentlichungsziele für Ihre Dokumente. Senden Sie Markdown-Dateien an GitHub Pages, generieren Sie RSS-Feeds oder posten Sie an benutzerdefinierte API-Endpunkte."
+      "publish": "Konfigurieren Sie Veröffentlichungsziele für Ihre Dokumente. Senden Sie Markdown-Dateien an GitHub Pages, generieren Sie RSS-Feeds oder posten Sie an benutzerdefinierte API-Endpunkte.",
+      "export": "PDF-Export konfigurieren — Seitengröße, Ränder, Schriftarten und Inhaltsoptionen."
     },
     "version": "Moraya v{version}",
     "permissions": {
@@ -226,6 +228,37 @@
         "pro": "Pro",
         "pro_plus": "Pro+"
       }
+    },
+    "export": {
+      "paperSize": "Papierformat",
+      "paperA4": "A4",
+      "paperLetter": "Letter",
+      "paperLegal": "Legal",
+      "paperA3": "A3",
+      "paperA5": "A5",
+      "orientation": "Ausrichtung",
+      "orientationPortrait": "Hochformat",
+      "orientationLandscape": "Querformat",
+      "margins": "Ränder (mm)",
+      "marginsTop": "Oben",
+      "marginsRight": "Rechts",
+      "marginsBottom": "Unten",
+      "marginsLeft": "Links",
+      "headerFooter": "Kopf- und Fußzeile",
+      "headerEnabled": "Kopfzeile aktivieren",
+      "footerEnabled": "Fußzeile aktivieren",
+      "templateHint": "Platzhalter: {title} {page} {total} {date}",
+      "typography": "Typografie",
+      "fontFamily": "Schriftart",
+      "fontFamilyPlaceholder": "Systemstandard",
+      "fontSize": "Schriftgröße",
+      "content": "Inhalt",
+      "enableHighlight": "Syntaxhervorhebung",
+      "enableMath": "Mathematik (KaTeX)",
+      "enableMermaid": "Mermaid-Diagramme",
+      "advanced": "Erweitert",
+      "autoFallback": "Bei Fehler automatisch in den Kompatibilitätsmodus wechseln",
+      "autoFallbackHint": "Wenn der native Druckpfad fehlschlägt, mit dem canvasbasierten Pfad erneut versuchen. Deaktivieren, um Fehler anzuzeigen und den Benutzer manuell erneut versuchen zu lassen."
     }
   },
   "titlebar": {
@@ -289,7 +322,11 @@
     "unsavedTitle": "Ungespeicherte Änderungen",
     "unsavedNewDocMsg": "Sie haben ungespeicherte Inhalte, die verloren gehen. Möchten Sie zuerst speichern?",
     "saveFirst": "Speichern",
-    "discardChanges": "Nicht speichern"
+    "discardChanges": "Nicht speichern",
+    "loading": {
+      "parsing": "Markdown wird analysiert…",
+      "rendering": "Wird gerendert…"
+    }
   },
   "table": {
     "insertRowAbove": "Zeile darüber einfügen",
@@ -854,7 +891,23 @@
     "mediawiki": "MediaWiki",
     "rst": "reStructuredText",
     "textile": "Textile",
-    "opml": "OPML"
+    "opml": "OPML",
+    "progress": {
+      "preparing": "Vorbereiten...",
+      "rendering": "Rendern...",
+      "paginating": "Seitenumbruch ({current}/{total})",
+      "writing": "Schreiben...",
+      "done": "Fertig"
+    },
+    "fallback": {
+      "notice": "Kompat-Modus"
+    },
+    "error": {
+      "generic": "Export fehlgeschlagen",
+      "timeout": "Export-Zeitüberschreitung",
+      "subprocessFailed": "Unterprozess fehlgeschlagen",
+      "nativeApiFailed": "Nativer Druck fehlgeschlagen"
+    }
   },
   "workflow": {
     "title": "KI-Workflow",

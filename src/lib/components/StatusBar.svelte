@@ -7,6 +7,8 @@
   import { filesStore } from '$lib/stores/files-store';
   import { kbSyncStore } from '$lib/services/kb-sync/sync-service';
   import type { KbSyncState } from '$lib/services/kb-sync/types';
+  import { exportProgressStore } from '$lib/stores/export-progress-store';
+  import { editorLoadingStore, type LoadingPhase } from '$lib/stores/editor-loading-store';
 
   let {
     onShowUpdateDialog,
@@ -95,6 +97,22 @@
     }
   });
 
+  let exportProgress: {
+    phase: string;
+    current?: number;
+    total?: number;
+    fallback: boolean;
+    message?: string;
+  } = $state({ phase: 'idle', fallback: false });
+  exportProgressStore.subscribe((s) => {
+    exportProgress = { ...s };
+  });
+
+  let editorLoading: { phase: LoadingPhase; sizeKB?: number } = $state({ phase: 'idle' });
+  editorLoadingStore.subscribe((s) => {
+    editorLoading = { ...s };
+  });
+
   const modes: EditorMode[] = ['visual', 'source', 'split'];
 
   function getModeLabel(mode: EditorMode): string {
@@ -144,6 +162,71 @@
           <span class="indexing-bar">
             <span class="indexing-fill" style="width: {Math.round((indexingCurrent / indexingTotal) * 100)}%"></span>
           </span>
+        {/if}
+      </span>
+    {/if}
+    {#if editorLoading.phase !== 'idle'}
+      <span class="status-item export-progress">
+        <span class="indexing-spinner"></span>
+        {#if editorLoading.phase === 'parsing'}
+          {$t('editor.loading.parsing')}
+        {:else}
+          {$t('editor.loading.rendering')}
+        {/if}
+        {#if editorLoading.sizeKB}
+          <span class="export-fallback-tag">({editorLoading.sizeKB}KB)</span>
+        {/if}
+        <span class="indexing-bar">
+          <span class="indexing-fill export-indeterminate"></span>
+        </span>
+      </span>
+    {/if}
+    {#if exportProgress.phase !== 'idle'}
+      <span
+        class="status-item export-progress"
+        class:export-error={exportProgress.phase === 'error'}
+        class:export-done={exportProgress.phase === 'done'}
+        class:export-fallback={exportProgress.fallback}
+      >
+        {#if exportProgress.phase === 'error'}
+          ⚠ {exportProgress.message
+            ? exportProgress.message.slice(0, 60)
+            : $t('export.error.generic')}
+        {:else if exportProgress.phase === 'done'}
+          ✓ {$t('export.progress.done')}
+          {#if exportProgress.fallback}
+            <span class="export-fallback-tag">({$t('export.fallback.notice')})</span>
+          {/if}
+        {:else}
+          <span class="indexing-spinner"></span>
+          {#if exportProgress.phase === 'preparing'}
+            {$t('export.progress.preparing')}
+          {:else if exportProgress.phase === 'rendering'}
+            {$t('export.progress.rendering')}
+          {:else if exportProgress.phase === 'paginating' && exportProgress.total}
+            {$t('export.progress.paginating')
+              .replace('{current}', String(exportProgress.current ?? 0))
+              .replace('{total}', String(exportProgress.total))}
+          {:else if exportProgress.phase === 'writing'}
+            {$t('export.progress.writing')}
+          {:else}
+            {$t('export.progress.preparing')}
+          {/if}
+          {#if exportProgress.fallback}
+            <span class="export-fallback-tag">({$t('export.fallback.notice')})</span>
+          {/if}
+          {#if exportProgress.phase === 'paginating' && exportProgress.total}
+            <span class="indexing-bar">
+              <span
+                class="indexing-fill"
+                style="width: {Math.round(((exportProgress.current ?? 0) / exportProgress.total) * 100)}%"
+              ></span>
+            </span>
+          {:else if exportProgress.phase !== 'idle' && exportProgress.phase !== 'done' && exportProgress.phase !== 'error'}
+            <span class="indexing-bar">
+              <span class="indexing-fill export-indeterminate"></span>
+            </span>
+          {/if}
         {/if}
       </span>
     {/if}
@@ -303,6 +386,36 @@
     background: var(--accent-color);
     border-radius: 2px;
     transition: width 0.3s ease;
+  }
+
+  .export-progress {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--accent-color);
+  }
+  .export-progress.export-error {
+    color: var(--color-error, #e53e3e);
+  }
+  .export-progress.export-done {
+    color: var(--color-success, #38a169);
+    transition: opacity 0.2s ease;
+  }
+  .export-progress.export-fallback {
+    color: var(--color-warning, #d69e2e);
+  }
+  .export-fallback-tag {
+    font-size: 0.85em;
+    opacity: 0.8;
+  }
+  .export-indeterminate {
+    width: 40% !important;
+    transition: none;
+    animation: export-slide 1.4s ease-in-out infinite;
+  }
+  @keyframes export-slide {
+    0%   { margin-left: -40%; }
+    100% { margin-left: 100%; }
   }
 
   .mode-switcher {

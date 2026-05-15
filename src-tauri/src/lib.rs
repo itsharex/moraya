@@ -675,6 +675,7 @@ pub fn run() {
         .manage(commands::speech_proxy::SpeechProxyState::new())
         .manage(commands::speech_proxy::RtDialogueState::new())
         .manage(commands::plugin_manager::PluginProcessManager::new())
+        .manage(commands::pdf_export::PdfExportState::new())
         .manage(OpenedFiles(Mutex::new(initial_files)))
         .manage(PendingFiles(Mutex::new(HashMap::new())))
         .manage(PendingTabData(Mutex::new(HashMap::new())))
@@ -688,6 +689,8 @@ pub fn run() {
             commands::file::write_file,
             commands::file::write_file_binary,
             commands::file::write_file_bytes,
+            commands::pdf_export::export_pdf_native,
+            commands::pdf_export::export_print_ready,
             commands::file::read_dir_recursive,
             commands::file::migrate_voice_profiles_dir,
             commands::file::create_markdown_file,
@@ -1029,9 +1032,16 @@ pub fn run() {
                             }
                         }
                     }
-                    // Handle Dock icon click when no windows are visible → create new window
+                    // Handle Dock icon click when no windows are visible → create new window.
+                    // Guard: macOS may report `has_visible_windows = false` when a
+                    // `visible(false)` print-job window is destroyed (PDF export cleanup).
+                    // In that case the main editor window is still open — check directly.
                     tauri::RunEvent::Reopen { has_visible_windows, .. } => {
-                        if !has_visible_windows {
+                        let any_editor_open = _app
+                            .webview_windows()
+                            .keys()
+                            .any(|lbl| !lbl.starts_with("moraya-print-"));
+                        if !has_visible_windows && !any_editor_open {
                             if let Some(pending) = _app.try_state::<PendingFiles>() {
                                 let _ = create_editor_window(_app, &pending, None);
                             }

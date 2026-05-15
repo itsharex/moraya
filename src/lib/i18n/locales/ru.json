@@ -38,7 +38,8 @@
       "knowledgeBase": "База знаний",
       "plugins": "Плагины",
       "kbSync": "Синхронизация KB",
-      "picora": "Picora"
+      "picora": "Picora",
+      "export": "Экспорт"
     },
     "groups": {
       "general": "Основные",
@@ -49,7 +50,8 @@
     },
     "tabDesc": {
       "image": "Настройте облачные хранилища для загрузки изображений.",
-      "publish": "Настройте цели публикации: блог, GitHub Pages, RSS и другие."
+      "publish": "Настройте цели публикации: блог, GitHub Pages, RSS и другие.",
+      "export": "Настройка экспорта PDF — размер страницы, поля, шрифты и переключатели содержимого."
     },
     "language": {
       "label": "Язык",
@@ -226,6 +228,37 @@
         "pro": "Pro",
         "pro_plus": "Pro+"
       }
+    },
+    "export": {
+      "paperSize": "Размер бумаги",
+      "paperA4": "A4",
+      "paperLetter": "Letter",
+      "paperLegal": "Legal",
+      "paperA3": "A3",
+      "paperA5": "A5",
+      "orientation": "Ориентация",
+      "orientationPortrait": "Книжная",
+      "orientationLandscape": "Альбомная",
+      "margins": "Поля (мм)",
+      "marginsTop": "Сверху",
+      "marginsRight": "Справа",
+      "marginsBottom": "Снизу",
+      "marginsLeft": "Слева",
+      "headerFooter": "Колонтитулы",
+      "headerEnabled": "Включить колонтитул сверху",
+      "footerEnabled": "Включить колонтитул снизу",
+      "templateHint": "Метки: {title} {page} {total} {date}",
+      "typography": "Типографика",
+      "fontFamily": "Шрифт",
+      "fontFamilyPlaceholder": "По умолчанию",
+      "fontSize": "Размер шрифта",
+      "content": "Содержимое",
+      "enableHighlight": "Подсветка синтаксиса",
+      "enableMath": "Формулы (KaTeX)",
+      "enableMermaid": "Диаграммы Mermaid",
+      "advanced": "Дополнительно",
+      "autoFallback": "Автоматически переключаться в режим совместимости при ошибке",
+      "autoFallbackHint": "Если нативный путь печати завершится с ошибкой, повторить через canvas. Отключите, чтобы показывать ошибки и давать пользователю повторить вручную."
     }
   },
   "titlebar": {
@@ -289,7 +322,11 @@
     "unsavedTitle": "Несохранённые изменения",
     "unsavedNewDocMsg": "У вас есть несохранённое содержимое, которое будет потеряно. Сохранить?",
     "saveFirst": "Сохранить",
-    "discardChanges": "Не сохранять"
+    "discardChanges": "Не сохранять",
+    "loading": {
+      "parsing": "Анализ Markdown…",
+      "rendering": "Отрисовка…"
+    }
   },
   "table": {
     "insertRowAbove": "Вставить строку выше",
@@ -854,7 +891,23 @@
     "mediawiki": "MediaWiki",
     "rst": "reStructuredText",
     "textile": "Textile",
-    "opml": "OPML"
+    "opml": "OPML",
+    "progress": {
+      "preparing": "Подготовка...",
+      "rendering": "Отрисовка...",
+      "paginating": "Разбиение на страницы ({current}/{total})",
+      "writing": "Запись...",
+      "done": "Готово"
+    },
+    "fallback": {
+      "notice": "Реж. совмест."
+    },
+    "error": {
+      "generic": "Ошибка экспорта",
+      "timeout": "Тайм-аут экспорта",
+      "subprocessFailed": "Сбой подпроцесса",
+      "nativeApiFailed": "Сбой нативной печати"
+    }
   },
   "workflow": {
     "title": "AI Рабочий процесс",

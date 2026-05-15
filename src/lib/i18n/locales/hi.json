@@ -38,7 +38,8 @@
       "knowledgeBase": "ज्ञान आधार",
       "plugins": "Plugin",
       "kbSync": "KB सिंक",
-      "picora": "Picora"
+      "picora": "Picora",
+      "export": "निर्यात"
     },
     "groups": {
       "general": "सामान्य",
@@ -49,7 +50,8 @@
     },
     "tabDesc": {
       "image": "इमेज अपलोड के लिए क्लाउड स्टोरेज प्रदाता कॉन्फ़िगर करें।",
-      "publish": "ब्लॉग, GitHub Pages या RSS जैसे प्रकाशन गंतव्य कॉन्फ़िगर करें।"
+      "publish": "ब्लॉग, GitHub Pages या RSS जैसे प्रकाशन गंतव्य कॉन्फ़िगर करें।",
+      "export": "PDF निर्यात कॉन्फ़िगर करें — पृष्ठ आकार, मार्जिन, फ़ॉन्ट और सामग्री टॉगल।"
     },
     "language": {
       "label": "भाषा",
@@ -226,6 +228,37 @@
         "pro": "Pro",
         "pro_plus": "Pro+"
       }
+    },
+    "export": {
+      "paperSize": "कागज़ का आकार",
+      "paperA4": "A4",
+      "paperLetter": "Letter",
+      "paperLegal": "Legal",
+      "paperA3": "A3",
+      "paperA5": "A5",
+      "orientation": "अभिमुखीकरण",
+      "orientationPortrait": "लंबवत",
+      "orientationLandscape": "क्षैतिज",
+      "margins": "मार्जिन (mm)",
+      "marginsTop": "ऊपर",
+      "marginsRight": "दाएँ",
+      "marginsBottom": "नीचे",
+      "marginsLeft": "बाएँ",
+      "headerFooter": "हेडर और फ़ुटर",
+      "headerEnabled": "हेडर सक्षम करें",
+      "footerEnabled": "फ़ुटर सक्षम करें",
+      "templateHint": "प्लेसहोल्डर: {title} {page} {total} {date}",
+      "typography": "टाइपोग्राफी",
+      "fontFamily": "फ़ॉन्ट",
+      "fontFamilyPlaceholder": "सिस्टम डिफ़ॉल्ट",
+      "fontSize": "फ़ॉन्ट आकार",
+      "content": "सामग्री",
+      "enableHighlight": "कोड सिंटैक्स हाइलाइटिंग",
+      "enableMath": "गणित (KaTeX)",
+      "enableMermaid": "Mermaid आरेख",
+      "advanced": "उन्नत",
+      "autoFallback": "विफलता पर स्वतः कम्पैट मोड पर वापस जाएँ",
+      "autoFallbackHint": "जब नेटिव प्रिंट पथ विफल हो, canvas आधारित पथ से पुनः प्रयास करें. त्रुटियाँ दिखाने और उपयोगकर्ता को मैन्युअली पुनः प्रयास कराने के लिए अक्षम करें."
     }
   },
   "titlebar": {
@@ -289,7 +322,11 @@
     "unsavedTitle": "सहेजे न गए परिवर्तन",
     "unsavedNewDocMsg": "आपके पास सहेजी न गई सामग्री है जो खो जाएगी। पहले सहेजें?",
     "saveFirst": "सहेजें",
-    "discardChanges": "सहेजें नहीं"
+    "discardChanges": "सहेजें नहीं",
+    "loading": {
+      "parsing": "मार्कडाउन पार्स कर रहा है…",
+      "rendering": "रेंडर हो रहा है…"
+    }
   },
   "table": {
     "insertRowAbove": "ऊपर पंक्ति डालें",
@@ -854,7 +891,23 @@
     "mediawiki": "MediaWiki",
     "rst": "reStructuredText",
     "textile": "Textile",
-    "opml": "OPML"
+    "opml": "OPML",
+    "progress": {
+      "preparing": "तैयारी…",
+      "rendering": "रेंडर हो रहा है…",
+      "paginating": "पेज विभाजन ({current}/{total})",
+      "writing": "लिखा जा रहा है…",
+      "done": "पूर्ण"
+    },
+    "fallback": {
+      "notice": "कम्पैट मोड"
+    },
+    "error": {
+      "generic": "निर्यात विफल",
+      "timeout": "निर्यात समय समाप्त",
+      "subprocessFailed": "उप-प्रक्रिया विफल",
+      "nativeApiFailed": "नेटिव प्रिंट विफल"
+    }
   },
   "workflow": {
     "title": "AI वर्कफ़्लो",

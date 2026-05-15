@@ -38,7 +38,8 @@
       "knowledgeBase": "Base de conocimiento",
       "plugins": "Plugins",
       "kbSync": "Sincronización KB",
-      "picora": "Picora"
+      "picora": "Picora",
+      "export": "Exportar"
     },
     "groups": {
       "general": "General",
@@ -222,6 +223,40 @@
         "pro": "Pro",
         "pro_plus": "Pro+"
       }
+    },
+    "tabDesc": {
+      "export": "Configurar la exportación a PDF — tamaño de página, márgenes, fuentes y opciones de contenido."
+    },
+    "export": {
+      "paperSize": "Tamaño de papel",
+      "paperA4": "A4",
+      "paperLetter": "Letter",
+      "paperLegal": "Legal",
+      "paperA3": "A3",
+      "paperA5": "A5",
+      "orientation": "Orientación",
+      "orientationPortrait": "Vertical",
+      "orientationLandscape": "Horizontal",
+      "margins": "Márgenes (mm)",
+      "marginsTop": "Superior",
+      "marginsRight": "Derecha",
+      "marginsBottom": "Inferior",
+      "marginsLeft": "Izquierda",
+      "headerFooter": "Encabezado y pie",
+      "headerEnabled": "Activar encabezado",
+      "footerEnabled": "Activar pie de página",
+      "templateHint": "Marcadores: {title} {page} {total} {date}",
+      "typography": "Tipografía",
+      "fontFamily": "Fuente",
+      "fontFamilyPlaceholder": "Predeterminada del sistema",
+      "fontSize": "Tamaño de fuente",
+      "content": "Contenido",
+      "enableHighlight": "Resaltado de sintaxis",
+      "enableMath": "Matemáticas (KaTeX)",
+      "enableMermaid": "Diagramas Mermaid",
+      "advanced": "Avanzado",
+      "autoFallback": "Recurrir automáticamente al modo de compatibilidad al fallar",
+      "autoFallbackHint": "Si la ruta nativa de impresión falla, reintentar con la ruta basada en canvas. Desactivar para mostrar errores y dejar que el usuario reintente."
     }
   },
   "titlebar": {
@@ -285,7 +320,11 @@
     "unsavedTitle": "Cambios sin guardar",
     "unsavedNewDocMsg": "Tiene contenido sin guardar que se perderá. ¿Desea guardarlo primero?",
     "saveFirst": "Guardar",
-    "discardChanges": "No guardar"
+    "discardChanges": "No guardar",
+    "loading": {
+      "parsing": "Analizando markdown…",
+      "rendering": "Renderizando…"
+    }
   },
   "table": {
     "insertRowAbove": "Insertar fila arriba",
@@ -850,7 +889,23 @@
     "mediawiki": "MediaWiki",
     "rst": "reStructuredText",
     "textile": "Textile",
-    "opml": "OPML"
+    "opml": "OPML",
+    "progress": {
+      "preparing": "Preparando...",
+      "rendering": "Renderizando...",
+      "paginating": "Paginando ({current}/{total})",
+      "writing": "Escribiendo...",
+      "done": "Hecho"
+    },
+    "fallback": {
+      "notice": "Modo compat."
+    },
+    "error": {
+      "generic": "Exportación fallida",
+      "timeout": "Tiempo de exportación agotado",
+      "subprocessFailed": "Falló el subproceso",
+      "nativeApiFailed": "Falló la impresión nativa"
+    }
   },
   "workflow": {
     "title": "Flujo de trabajo IA",

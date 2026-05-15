@@ -38,7 +38,8 @@
       "knowledgeBase": "Base de connaissances",
       "plugins": "Plugins",
       "kbSync": "Sync KB",
-      "picora": "Picora"
+      "picora": "Picora",
+      "export": "Exporter"
     },
     "groups": {
       "general": "Général",
@@ -222,6 +223,40 @@
         "pro": "Pro",
         "pro_plus": "Pro+"
       }
+    },
+    "tabDesc": {
+      "export": "Configurer l'export PDF — taille de page, marges, polices et options de contenu."
+    },
+    "export": {
+      "paperSize": "Format de papier",
+      "paperA4": "A4",
+      "paperLetter": "Letter",
+      "paperLegal": "Legal",
+      "paperA3": "A3",
+      "paperA5": "A5",
+      "orientation": "Orientation",
+      "orientationPortrait": "Portrait",
+      "orientationLandscape": "Paysage",
+      "margins": "Marges (mm)",
+      "marginsTop": "Haut",
+      "marginsRight": "Droite",
+      "marginsBottom": "Bas",
+      "marginsLeft": "Gauche",
+      "headerFooter": "En-tête et pied de page",
+      "headerEnabled": "Activer l'en-tête",
+      "footerEnabled": "Activer le pied de page",
+      "templateHint": "Espaces réservés : {title} {page} {total} {date}",
+      "typography": "Typographie",
+      "fontFamily": "Police",
+      "fontFamilyPlaceholder": "Système par défaut",
+      "fontSize": "Taille de police",
+      "content": "Contenu",
+      "enableHighlight": "Coloration syntaxique",
+      "enableMath": "Maths (KaTeX)",
+      "enableMermaid": "Diagrammes Mermaid",
+      "advanced": "Avancé",
+      "autoFallback": "Basculer automatiquement en mode compatibilité en cas d'échec",
+      "autoFallbackHint": "Si la voie d'impression native échoue, réessayer avec la voie basée sur canvas. Désactivez pour afficher les erreurs et laisser l'utilisateur réessayer."
     }
   },
   "titlebar": {
@@ -285,7 +320,11 @@
     "unsavedTitle": "Modifications non enregistrées",
     "unsavedNewDocMsg": "Vous avez du contenu non enregistré qui sera perdu. Voulez-vous d'abord l'enregistrer ?",
     "saveFirst": "Enregistrer",
-    "discardChanges": "Ne pas enregistrer"
+    "discardChanges": "Ne pas enregistrer",
+    "loading": {
+      "parsing": "Analyse du markdown…",
+      "rendering": "Rendu en cours…"
+    }
   },
   "table": {
     "insertRowAbove": "Insérer une ligne au-dessus",
@@ -850,7 +889,23 @@
     "mediawiki": "MediaWiki",
     "rst": "reStructuredText",
     "textile": "Textile",
-    "opml": "OPML"
+    "opml": "OPML",
+    "progress": {
+      "preparing": "Préparation...",
+      "rendering": "Rendu...",
+      "paginating": "Pagination ({current}/{total})",
+      "writing": "Écriture...",
+      "done": "Terminé"
+    },
+    "fallback": {
+      "notice": "Mode compat."
+    },
+    "error": {
+      "generic": "Échec de l'export",
+      "timeout": "Délai d'export dépassé",
+      "subprocessFailed": "Échec du sous-processus",
+      "nativeApiFailed": "Échec d'impression natif"
+    }
   },
   "workflow": {
     "title": "Workflow IA",

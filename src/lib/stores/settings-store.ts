@@ -18,6 +18,42 @@ const KEYCHAIN_SPEECH_AWS_SK_PREFIX = 'speech-aws-sk:';
 
 export type Theme = 'light' | 'dark' | 'system';
 
+// v0.60.0 — Native PDF export settings.
+export type ExportPaperSize = 'a4' | 'letter' | 'legal' | 'a3' | 'a5';
+export type ExportOrientation = 'portrait' | 'landscape';
+
+export interface ExportSettings {
+  pageSize: ExportPaperSize;
+  orientation: ExportOrientation;
+  margins: { top: number; right: number; bottom: number; left: number };
+  headerEnabled: boolean;
+  headerTemplate: string;
+  footerEnabled: boolean;
+  footerTemplate: string;
+  fontFamily: string;     // empty string = system default
+  fontSize: number;       // pt
+  enableHighlight: boolean;
+  enableMermaid: boolean;
+  enableMath: boolean;
+  autoFallbackOnFailure: boolean;
+}
+
+export const DEFAULT_EXPORT_SETTINGS: ExportSettings = {
+  pageSize: 'a4',
+  orientation: 'portrait',
+  margins: { top: 20, right: 15, bottom: 20, left: 15 },
+  headerEnabled: false,
+  headerTemplate: '{title}',
+  footerEnabled: true,
+  footerTemplate: '{page} / {total}',
+  fontFamily: '',
+  fontSize: 11,
+  enableHighlight: true,
+  enableMermaid: true,
+  enableMath: true,
+  autoFallbackOnFailure: true,
+};
+
 interface Settings {
   theme: Theme;
   colorTheme: string;           // active color theme id for light mode
@@ -80,6 +116,8 @@ interface Settings {
   picoraTabSeen: boolean;
   // v0.37.0: Auto-rewrite base64 images in documents to Picora CDN on upload
   picoraRewriteBase64: boolean;
+  // v0.60.0: Native PDF export configuration.
+  exportSettings: ExportSettings;
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -135,6 +173,7 @@ const DEFAULT_SETTINGS: Settings = {
   picoraDebugLogging: false,
   picoraTabSeen: false,
   picoraRewriteBase64: false,
+  exportSettings: { ...DEFAULT_EXPORT_SETTINGS, margins: { ...DEFAULT_EXPORT_SETTINGS.margins } },
 };
 
 function resolveLocale(selection: LocaleSelection): SupportedLocale {

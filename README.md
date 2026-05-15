@@ -359,6 +359,7 @@ All API keys are stored exclusively in your OS Keychain — never in plaintext. 
 | v0.57.0 | Agent over Docs (P1 AI 3) — ReAct/Plan-Execute, 5 tool types, multi-step task execution | ✅ |
 | v0.58.0 | Enterprise — SCIM, HSM, private deployment, multi-org, compliance archive | ✅ |
 | v0.59.0 | Performance + PWA polish — bundle optimization, virtual scroll, offline shell | ✅ |
+| v0.60.0 | Native PDF export — print-to-PDF on macOS WKWebView + Windows WebView2 + Linux WebKitGTK, selectable text, vector fonts, CSS @page pagination, statusbar progress, full Export settings tab | 📋 |
 | v1.0.0 | Moraya Web GA — bug bash, full docs, case studies, launch day coordination | 📋 |
 
 ## ⭐ Star Growth trend (updated in real time)

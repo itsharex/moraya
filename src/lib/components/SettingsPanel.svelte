@@ -15,8 +15,9 @@
   import KBIndexSettings from './KBIndexSettings.svelte';
   import KbSyncSettings from './KbSyncSettings.svelte';
   import PicoraSettingsTab from './picora-tab/PicoraSettingsTab.svelte';
+  import ExportSettings from './ExportSettings.svelte';
 
-  type Tab = 'general' | 'ai' | 'image-ai' | 'mcp' | 'image' | 'publish' | 'permissions' | 'voice' | 'plugins' | 'knowledge-base' | 'kb-sync' | 'picora';
+  type Tab = 'general' | 'ai' | 'image-ai' | 'mcp' | 'image' | 'publish' | 'permissions' | 'voice' | 'plugins' | 'knowledge-base' | 'kb-sync' | 'picora' | 'export';
 
   let {
     onClose,
@@ -142,6 +143,7 @@
       groupKey: 'settings.groups.general',
       items: [
         { key: 'general', icon: '⚙', labelKey: 'settings.tabs.general' },
+        { key: 'export', icon: '📄', labelKey: 'settings.tabs.export' },
         { key: 'permissions', icon: '🔒', labelKey: 'settings.tabs.permissions' },
       ],
     },
@@ -255,6 +257,7 @@
           <PicoraSettingsTab onJumpToKbSync={() => activeTab = 'kb-sync'} />
         </div>
         <div class="tab-pane" class:active={activeTab === 'plugins'}><PluginsPanel /></div>
+        <div class="tab-pane" class:active={activeTab === 'export'}><ExportSettings /></div>
 
         {#if activeTab === 'general'}
           <!-- General Section -->

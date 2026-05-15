@@ -1148,7 +1148,7 @@ ${tr('welcome.tip')}
     // Export shortcut
     if (mod && event.shiftKey && event.key === 'E') {
       event.preventDefault();
-      exportDocument(getCurrentContent(), 'html');
+      exportDocument(getCurrentContent, 'html');
       return;
     }
 
@@ -2681,10 +2681,14 @@ ${tr('welcome.tip')}
         'menu:file_open': () => handleOpenFile(),
         'menu:file_save': () => handleSave(),
         'menu:file_save_as': () => handleSave(true),
-        'menu:file_export_html': () => exportDocument(getCurrentContent(), 'html'),
-        'menu:file_export_pdf': () => exportDocument(getCurrentContent(), 'pdf'),
-        'menu:file_export_image': () => exportDocument(getCurrentContent(), 'image'),
-        'menu:file_export_doc': () => exportDocument(getCurrentContent(), 'doc'),
+        // Pass `getCurrentContent` as a function (not its return value) so the
+        // save dialog can appear immediately. Markdown serialization for huge
+        // docs takes seconds-to-minutes; calling it eagerly here would block
+        // the main thread and delay the dialog by that long.
+        'menu:file_export_html': () => exportDocument(getCurrentContent, 'html'),
+        'menu:file_export_pdf': () => exportDocument(getCurrentContent, 'pdf'),
+        'menu:file_export_image': () => exportDocument(getCurrentContent, 'image'),
+        'menu:file_export_doc': () => exportDocument(getCurrentContent, 'doc'),
         // Edit — undo/redo (split mode: route to whichever pane is focused)
         'menu:edit_undo': () => {
           if (editorMode === 'source' || (editorMode === 'split' && isSourcePaneFocused())) {

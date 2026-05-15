@@ -38,7 +38,8 @@
       "knowledgeBase": "지식 베이스",
       "plugins": "플러그인",
       "kbSync": "KB 동기화",
-      "picora": "Picora"
+      "picora": "Picora",
+      "export": "내보내기"
     },
     "groups": {
       "general": "일반",
@@ -49,7 +50,8 @@
     },
     "tabDesc": {
       "image": "이미지 업로드용 클라우드 스토리지 제공업체를 구성합니다.",
-      "publish": "블로그, GitHub Pages, RSS 등 게시 대상을 설정합니다."
+      "publish": "블로그, GitHub Pages, RSS 등 게시 대상을 설정합니다.",
+      "export": "PDF 내보내기 구성 — 용지 크기, 여백, 글꼴 및 콘텐츠 토글."
     },
     "language": {
       "label": "언어",
@@ -226,6 +228,37 @@
         "pro": "Pro",
         "pro_plus": "Pro+"
       }
+    },
+    "export": {
+      "paperSize": "용지 크기",
+      "paperA4": "A4",
+      "paperLetter": "Letter",
+      "paperLegal": "Legal",
+      "paperA3": "A3",
+      "paperA5": "A5",
+      "orientation": "방향",
+      "orientationPortrait": "세로",
+      "orientationLandscape": "가로",
+      "margins": "여백 (mm)",
+      "marginsTop": "위",
+      "marginsRight": "오른쪽",
+      "marginsBottom": "아래",
+      "marginsLeft": "왼쪽",
+      "headerFooter": "머리글 및 바닥글",
+      "headerEnabled": "머리글 사용",
+      "footerEnabled": "바닥글 사용",
+      "templateHint": "자리표시자: {title} {page} {total} {date}",
+      "typography": "타이포그래피",
+      "fontFamily": "글꼴",
+      "fontFamilyPlaceholder": "시스템 기본값",
+      "fontSize": "글꼴 크기",
+      "content": "콘텐츠",
+      "enableHighlight": "코드 구문 강조",
+      "enableMath": "수식 (KaTeX)",
+      "enableMermaid": "Mermaid 다이어그램",
+      "advanced": "고급",
+      "autoFallback": "실패 시 호환 모드로 자동 폴백",
+      "autoFallbackHint": "네이티브 인쇄 경로가 실패하면 canvas 기반 경로로 재시도합니다. 비활성화하면 오류를 표시하여 사용자가 수동으로 재시도하게 합니다."
     }
   },
   "titlebar": {
@@ -289,7 +322,11 @@
     "unsavedTitle": "저장되지 않은 변경사항",
     "unsavedNewDocMsg": "저장되지 않은 내용이 있습니다. 먼저 저장하시겠습니까?",
     "saveFirst": "저장",
-    "discardChanges": "저장 안 함"
+    "discardChanges": "저장 안 함",
+    "loading": {
+      "parsing": "Markdown 파싱 중…",
+      "rendering": "렌더링 중…"
+    }
   },
   "table": {
     "insertRowAbove": "위에 행 삽입",
@@ -854,7 +891,23 @@
     "mediawiki": "MediaWiki",
     "rst": "reStructuredText",
     "textile": "Textile",
-    "opml": "OPML"
+    "opml": "OPML",
+    "progress": {
+      "preparing": "준비 중…",
+      "rendering": "렌더링 중…",
+      "paginating": "페이지 나누기 ({current}/{total})",
+      "writing": "기록 중…",
+      "done": "완료"
+    },
+    "fallback": {
+      "notice": "호환 모드"
+    },
+    "error": {
+      "generic": "내보내기 실패",
+      "timeout": "내보내기 시간 초과",
+      "subprocessFailed": "하위 프로세스 실패",
+      "nativeApiFailed": "네이티브 인쇄 실패"
+    }
   },
   "workflow": {
     "title": "AI 워크플로",
